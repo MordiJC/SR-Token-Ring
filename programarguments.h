@@ -6,8 +6,7 @@
 #include <vector>
 
 #include "ip4.h"
-
-enum class Protocol : unsigned int { NONE = 0u, UDP, TCP, PROTOCOL_NUMBER };
+#include "protocol.h"
 
 /* Exceptions */
 

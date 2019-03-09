@@ -16,6 +16,8 @@ class Ip4 {
  public:
   Ip4() noexcept;
 
+  explicit Ip4(struct in_addr& socketAddress) noexcept;
+
   explicit Ip4(const std::string& inputIpAddress) noexcept(false);
 
   in_addr getAddress() const;
