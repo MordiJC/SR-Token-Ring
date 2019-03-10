@@ -222,8 +222,7 @@ void Socket::sendTo(const std::vector<unsigned char> &data,
 }
 
 std::vector<unsigned char> Socket::receive() noexcept(false) {
-  static std::vector<unsigned char> buffer(
-      bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
+  std::vector<unsigned char> buffer(bufferSize);
   ssize_t recvSize = 0;
 
   recvSize = ::recv(socketDescriptor, buffer.data(), bufferSize, 0);
@@ -237,8 +236,7 @@ std::vector<unsigned char> Socket::receive() noexcept(false) {
 
 std::pair<Socket::IpAndPortPair, std::vector<unsigned char>>
 Socket::receiveFrom() noexcept(false) {
-  static std::vector<unsigned char> buffer(
-      bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
+  std::vector<unsigned char> buffer(bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
   ssize_t recvSize = 0;
 
   struct sockaddr_in sourceAddress;
