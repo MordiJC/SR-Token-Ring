@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <stdexcept>
+#include <vector>
 
 #include "ip4.h"
 #include "protocol.h"
@@ -28,6 +29,12 @@ using SocketSelectFailedException = SocketSelectException;
 
 using SocketSelectTimeoutException = SocketSelectException;
 
+using SocketAcceptFailedException = SocketException;
+
+using SocketSendingFailedException = SocketException;
+
+using SocketReceivingFailedException = SocketException;
+
 class Socket {
  public:
   enum class ConnectionStatus : unsigned int {
@@ -38,6 +45,10 @@ class Socket {
 
     NUMBER  //! Number of states
   };
+
+  static const int bufferSize = 1024;
+
+  using IpAndPortPair = std::pair<Ip4, unsigned short>;
 
  private:
   Protocol protocol = Protocol::NONE;
@@ -50,6 +61,9 @@ class Socket {
 
  private:
   explicit Socket(int descriptor, bool peer = false) noexcept(false);
+
+  explicit Socket(int descriptor, in_addr address,
+                  unsigned short port) noexcept(false);
 
  public:
   explicit Socket(Protocol protocol) noexcept(false);
@@ -77,9 +91,23 @@ class Socket {
 
   Socket select(const std::chrono::seconds& timeout) noexcept(false);
 
+  Socket accept() noexcept(false);
+
+  void send(const std::vector<unsigned char>& data) noexcept(false);
+
+  void sendTo(const std::vector<unsigned char>& data, const Ip4& destination,
+              unsigned short port) noexcept(false);
+
+  std::vector<unsigned char> receive() noexcept(false);
+
+  std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom() noexcept(false);
+
  private:
   Socket select(struct timeval* tv) noexcept(false);
+
   void getProtocolTypeFromSocketOpts(int descriptor);
+
+  void getIpAndFortFromSocket(int descriptor, bool peer);
 };
 
 #endif  // SOCKET_H

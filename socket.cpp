@@ -34,9 +34,7 @@ void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
   }
 }
 
-Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
-  getProtocolTypeFromSocketOpts(descriptor);
-
+void Socket::getIpAndFortFromSocket(int descriptor, bool peer) {
   int ret = 0;
   struct sockaddr_in socketAddressStruct;
   unsigned int socketAddressStructSize = sizeof(socketAddressStruct);
@@ -60,6 +58,20 @@ Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
 
   connectionIp = Ip4(socketAddressStruct.sin_addr);
   connectionPort = socketAddressStruct.sin_port;
+}
+
+Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
+  getProtocolTypeFromSocketOpts(descriptor);
+
+  getIpAndFortFromSocket(descriptor, peer);
+}
+
+Socket::Socket(int descriptor, in_addr address,
+               unsigned short port) noexcept(false)
+    : socketDescriptor(descriptor),
+      connectionIp(Ip4(address)),
+      connectionPort(port) {
+  getProtocolTypeFromSocketOpts(descriptor);
 }
 
 Socket::Socket(Protocol protocol) noexcept(false) : protocol(protocol) {
@@ -159,6 +171,90 @@ Socket Socket::select(const std::chrono::milliseconds &timeout) noexcept(
 
 Socket Socket::select(const std::chrono::seconds &timeout) noexcept(false) {
   return select(std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
+}
+
+Socket Socket::accept() noexcept(false) {
+  int descriptor = 0;
+  struct sockaddr_in incomingAddress;
+  unsigned int incomingAddressSize = sizeof(incomingAddress);
+
+  descriptor = ::accept(socketDescriptor,
+                        reinterpret_cast<struct sockaddr *>(&incomingAddress),
+                        &incomingAddressSize);
+
+  if (descriptor == -1) {
+    throw SocketAcceptFailedException("Failed to accept connection");
+  }
+
+  return Socket(descriptor, incomingAddress.sin_addr, incomingAddress.sin_port);
+}
+
+void Socket::send(const std::vector<unsigned char> &data) noexcept(false) {
+  ssize_t sentSize = 0;
+
+  sentSize = ::send(socketDescriptor, data.data(), data.size(), 0);
+
+  if (sentSize == -1) {
+    throw SocketSendingFailedException("Failed to send data");
+  }
+}
+
+void Socket::sendTo(const std::vector<unsigned char> &data,
+                    const Ip4 &destination,
+                    unsigned short port) noexcept(false) {
+  ssize_t sentSize = 0;
+
+  struct sockaddr_in destinationAddress;
+
+  ::memset(&destinationAddress, 0, sizeof(destinationAddress));
+
+  destinationAddress.sin_addr = destination.getAddress();
+  destinationAddress.sin_port = port;
+  destinationAddress.sin_family = AF_INET;
+
+  sentSize = ::sendto(socketDescriptor, data.data(), data.size(), 0,
+                      reinterpret_cast<struct sockaddr *>(&destinationAddress),
+                      sizeof(destinationAddress));
+
+  if (sentSize == -1) {
+    throw SocketSendingFailedException("Failed to send data to specified host");
+  }
+}
+
+std::vector<unsigned char> Socket::receive() noexcept(false) {
+  static std::vector<unsigned char> buffer(
+      bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
+  ssize_t recvSize = 0;
+
+  recvSize = ::recv(socketDescriptor, buffer.data(), bufferSize, 0);
+
+  if (recvSize == -1) {
+    throw SocketReceivingFailedException("Failed to receive data from socket");
+  }
+
+  return buffer;
+}
+
+std::pair<Socket::IpAndPortPair, std::vector<unsigned char>>
+Socket::receiveFrom() noexcept(false) {
+  static std::vector<unsigned char> buffer(
+      bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
+  ssize_t recvSize = 0;
+
+  struct sockaddr_in sourceAddress;
+  unsigned int sourceAddressSize = sizeof(sourceAddress);
+
+  recvSize = ::recvfrom(socketDescriptor, buffer.data(), bufferSize, 0,
+                        reinterpret_cast<struct sockaddr *>(&sourceAddress),
+                        &sourceAddressSize);
+
+  if (recvSize == -1) {
+    throw SocketReceivingFailedException("Failed to receive data from socket");
+  }
+
+  return std::make_pair(
+      std::make_pair(Ip4(sourceAddress.sin_addr), sourceAddress.sin_port),
+      buffer);
 }
 
 Socket Socket::select(struct timeval *tv) noexcept(false) {
