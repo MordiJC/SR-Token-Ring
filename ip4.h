@@ -2,6 +2,8 @@
 #define IP4_H
 
 #define _BSD_SOURCE 1
+#include "serializable.h"
+
 #include <arpa/inet.h>
 
 #include <stdexcept>
@@ -9,7 +11,7 @@
 
 using Ip4InvalidInputException = std::runtime_error;
 
-class Ip4 {
+class Ip4: public Serializable {
  private:
   struct in_addr address;
 
@@ -23,6 +25,11 @@ class Ip4 {
   in_addr getAddress() const;
 
   std::string to_string() const;
+
+  // Serializable interface
+public:
+  Serializable::size_type fromBinary(const Serializable::container_type &buffer);
+  Serializable::container_type toBinary() const;
 };
 
 #endif  // IP4_H

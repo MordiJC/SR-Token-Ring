@@ -4,16 +4,17 @@
 #include <atomic>
 #include <csignal>
 #include <memory>
-#include <vector>
 #include <mutex>
+#include <vector>
 
 void quitStatusObserverHandler(int);
 
 class QuitStatusObserver {
-public:
-  typedef void(*QuitFunctionHandler_t)();
+ public:
+  typedef void (*QuitFunctionHandler_t)();
+
  private:
-  static std::unique_ptr<QuitStatusObserver> instance;
+  static QuitStatusObserver *instance;
   std::atomic_bool shouldQuitStatus{false};
 
   std::vector<QuitFunctionHandler_t> quitHandlers;

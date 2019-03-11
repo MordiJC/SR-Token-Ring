@@ -15,6 +15,9 @@ using TokenRingDispatcherNotEnoughDataForRegisterSubheaderException =
     TokenRingDispatcherException;
 
 class TokenRingDispatcher {
+ public:
+  static const std::string workingIp;
+
  private:
   std::queue<TokenRingPacket> registerRequestPackets;  // First priority
   std::queue<TokenRingPacket> dataPackets;             // Second priority
@@ -34,7 +37,8 @@ class TokenRingDispatcher {
 
   void initializeSockets();
 
-  std::vector<unsigned char> prepareRegisterPacket(Socket& incomingSocket);
+  std::vector<unsigned char> preparePacketRegisterSubheaderFromJoinPacket(
+      Socket& incomingSocket, const TokenRingPacket& joinPacket);
 
   void handleIncomingDataPacket(TokenRingPacket& incomingPacket);
 

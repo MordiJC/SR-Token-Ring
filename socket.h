@@ -68,7 +68,7 @@ class Socket {
  public:
   explicit Socket(Protocol protocol) noexcept(false);
 
-  Socket(const Socket&) = delete;
+  Socket(const Socket&) = default;
   Socket(Socket&&) = default;
 
   Socket& operator=(const Socket&) = delete;

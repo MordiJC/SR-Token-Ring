@@ -5,6 +5,8 @@
 #include <cstring>
 #include <iostream>
 
+const std::string TokenRingDispatcher::workingIp{"127.0.0.1"};
+
 TokenRingPacket TokenRingDispatcher::createJoinPacket() {
   TokenRingPacket packet;
 
@@ -15,7 +17,7 @@ TokenRingPacket TokenRingDispatcher::createJoinPacket() {
   packetHeader.setOriginalSenderName(programArguments.getUserIdentifier());
 
   TokenRingPacket::RegisterSubheader registerSubheader;
-  registerSubheader.ip = Ip4("127.0.0.1");
+  registerSubheader.ip = Ip4(workingIp);
   registerSubheader.port = programArguments.getPort();
   registerSubheader.setNeighborToDisconnectName("");
 
@@ -41,7 +43,7 @@ void TokenRingDispatcher::sendJoinRequest() {
 }
 
 void TokenRingDispatcher::initializeSockets() {
-  neighborSocket->bind(Ip4("127.0.0.1"), programArguments.getPort());
+  neighborSocket->bind(Ip4(workingIp), programArguments.getPort());
 
   neighborSocket->listen(2);
 
@@ -49,20 +51,19 @@ void TokenRingDispatcher::initializeSockets() {
                         programArguments.getNeighborPort());
 }
 
-std::vector<unsigned char> TokenRingDispatcher::prepareRegisterPacket(
-    Socket& incomingSocket) {
+std::vector<unsigned char>
+TokenRingDispatcher::preparePacketRegisterSubheaderFromJoinPacket(
+    Socket& incomingSocket, const TokenRingPacket& joinPacket) {
   TokenRingPacket::RegisterSubheader registerSubheader;
+
+  registerSubheader.fromBinary(joinPacket.getData());
+
   registerSubheader.setNeighborToDisconnectName(
       programArguments.getUserIdentifier());
   registerSubheader.ip = incomingSocket.getConnectionIp();
   registerSubheader.port = incomingSocket.getConnectionPort();
 
-  std::vector<unsigned char> registerSubheaderBinaryForm;
-  registerSubheaderBinaryForm.resize(sizeof(registerSubheader));
-  std::memcpy(registerSubheaderBinaryForm.data(), &registerSubheader,
-              sizeof(registerSubheader));
-
-  return registerSubheaderBinaryForm;
+  return registerSubheader.toBinary();
 }
 
 void TokenRingDispatcher::handleIncomingDataPacket(
@@ -104,7 +105,8 @@ void TokenRingDispatcher::handleIncomingJoinPacket(
     neighborSocket = std::make_unique<Socket>(incomingSocket);
   } else if (!neighborName.empty() && neighborSocket) {
     std::vector<unsigned char> registerSubheaderBinaryForm =
-        prepareRegisterPacket(incomingSocket);
+        preparePacketRegisterSubheaderFromJoinPacket(incomingSocket,
+                                                     incomingPacket);
 
     incomingPacket.setData(registerSubheaderBinaryForm);
 
@@ -145,6 +147,8 @@ void TokenRingDispatcher::run() {
 
     using trppt = TokenRingPacket::PacketType;
 
+    bool shouldPass = false;
+
     switch (incomingPacket.getHeader().type) {
       case trppt::DATA:
         handleIncomingDataPacket(incomingPacket);
@@ -157,13 +161,16 @@ void TokenRingDispatcher::run() {
         TokenRingPacket::RegisterSubheader registerSubheader;
 
         if (incomingPacket.getHeader().dataSize < sizeof(registerSubheader)) {
-          throw TokenRingDispatcherNotEnoughDataForRegisterSubheaderException(
-              "Incoming packet has not enough data to construct Register "
-              "Subheader");
+          std::cerr << "[ERROR] Incoming packet has not enough data to "
+                       "construct Register "
+                       "Subheader"
+                    << std::endl;
+
+          shouldPass = true;
+          break;
         }
 
-        std::memcpy(&registerSubheader, incomingPacket.getData().data(),
-                    sizeof(registerSubheader));
+        registerSubheader.fromBinary(incomingPacket.getData());
 
         if (registerSubheader.neighborToDisconnectNameToString() ==
             neighborName) {
@@ -177,6 +184,11 @@ void TokenRingDispatcher::run() {
                   << static_cast<std::underlying_type_t<trppt>>(
                          incomingPacket.getHeader().type)
                   << std::endl;
+        shouldPass = true;
+    }
+
+    if (shouldPass) {
+      continue;
     }
 
     // Handle packets from queues and send them

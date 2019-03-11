@@ -7,12 +7,13 @@
 #include <vector>
 
 #include "ip4.h"
+#include "serializable.h"
 
 using TokenRingPacketException = std::runtime_error;
 
 using TokenRingPacketInputBufferTooSmallException = TokenRingPacketException;
 
-class TokenRingPacket {
+class TokenRingPacket : public Serializable {
  public:
   enum class PacketType : uint8_t {
     NONE = 0u,  /// none type representing dummy packet
@@ -30,21 +31,21 @@ class TokenRingPacket {
   static const size_t UserIdentifierNameSize = 16;
 
 #pragma pack(push, 1)
-  class Header {
+  class Header : public Serializable {
    public:
     PacketType type;
-
     TokenStatus_t tokenStatus;
 
     char originalSenderName[UserIdentifierNameSize];  // padded with zeros,
                                                       // maximum chars = 15
-
-    char packetSenderName[UserIdentifierNameSize];  // padded with zeros,
-                                                    // maximum chars = 15
-
+    char packetSenderName[UserIdentifierNameSize];    // padded with zeros,
+                                                      // maximum chars = 15
     char packetReceiverName[UserIdentifierNameSize];
 
     uint16_t dataSize;  // size of data
+
+   public:
+    virtual ~Header() = default;
 
     void setOriginalSenderName(const std::string& str);
 
@@ -57,15 +58,23 @@ class TokenRingPacket {
     std::string packetSenderNameToString() const;
 
     std::string packetReceiverNameToString() const;
+
+    Serializable::size_type fromBinary(
+        const Serializable::container_type& buffer);
+
+    Serializable::container_type toBinary() const;
   };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
-  class RegisterSubheader {
+  class RegisterSubheader : public Serializable {
    public:
     // New host data
     Ip4 ip;
     unsigned short port;
+
+   public:
+    virtual ~RegisterSubheader() = default;
 
     // New host neighbor name
     char neighborToDisconnectName[UserIdentifierNameSize];
@@ -73,6 +82,10 @@ class TokenRingPacket {
     void setNeighborToDisconnectName(const std::string& str);
 
     std::string neighborToDisconnectNameToString() const;
+
+    Serializable::size_type fromBinary(const container_type& buffer);
+
+    container_type toBinary() const;
   };
 #pragma pack(pop)
 
@@ -80,10 +93,10 @@ class TokenRingPacket {
   Header header;
   std::vector<unsigned char> data;
 
-  void constructHeaderFromBinaryData(
+  Serializable::size_type constructHeaderFromBinaryData(
       const std::vector<unsigned char>& sourceBuffer);
 
-  void extractDataFromBinaryAndHeader(
+  Serializable::size_type extractDataFromBinaryAndHeader(
       const std::vector<unsigned char>& sourceBuffer);
 
  public:
@@ -91,6 +104,8 @@ class TokenRingPacket {
 
   explicit TokenRingPacket(
       const std::vector<unsigned char>& sourceBuffer) noexcept(false);
+
+  virtual ~TokenRingPacket() = default;
 
   const Header& getHeader() const;
 
@@ -100,9 +115,9 @@ class TokenRingPacket {
 
   void setData(const std::vector<unsigned char>& value);
 
-  std::vector<unsigned char> toBinary() const;
-
-  void fromBinary(const std::vector<unsigned char> &sourceBuffer) noexcept(false);
+  Serializable::size_type fromBinary(
+      const Serializable::container_type& buffer) noexcept(false);
+  Serializable::container_type toBinary() const;
 };
 
 #endif  // TOKENRINGPACKET_H
