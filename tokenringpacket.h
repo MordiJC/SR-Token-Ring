@@ -39,15 +39,24 @@ class TokenRingPacket {
     char originalSenderName[UserIdentifierNameSize];  // padded with zeros,
                                                       // maximum chars = 15
 
-    /// Potrzebne?
     char packetSenderName[UserIdentifierNameSize];  // padded with zeros,
                                                     // maximum chars = 15
+
+    char packetReceiverName[UserIdentifierNameSize];
 
     uint16_t dataSize;  // size of data
 
     void setOriginalSenderName(const std::string& str);
 
     void setPacketSenderName(const std::string& str);
+
+    void setPacketReceiverName(const std::string& str);
+
+    std::string originalSenderNameToString() const;
+
+    std::string packetSenderNameToString() const;
+
+    std::string packetReceiverNameToString() const;
   };
 #pragma pack(pop)
 
@@ -62,6 +71,8 @@ class TokenRingPacket {
     char neighborToDisconnectName[UserIdentifierNameSize];
 
     void setNeighborToDisconnectName(const std::string& str);
+
+    std::string neighborToDisconnectNameToString() const;
   };
 #pragma pack(pop)
 

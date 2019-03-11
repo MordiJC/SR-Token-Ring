@@ -60,6 +60,16 @@ void Socket::getIpAndFortFromSocket(int descriptor, bool peer) {
   connectionPort = socketAddressStruct.sin_port;
 }
 
+Ip4 Socket::getConnectionIp() const
+{
+  return connectionIp;
+}
+
+unsigned short Socket::getConnectionPort() const
+{
+  return connectionPort;
+}
+
 Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
   getProtocolTypeFromSocketOpts(descriptor);
 

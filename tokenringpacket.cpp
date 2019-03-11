@@ -62,8 +62,8 @@ std::vector<unsigned char> TokenRingPacket::toBinary() const {
   return buffer;
 }
 
-void TokenRingPacket::fromBinary(const std::vector<unsigned char>& sourceBuffer) noexcept(false)
-{
+void TokenRingPacket::fromBinary(
+    const std::vector<unsigned char> &sourceBuffer) noexcept(false) {
   constructHeaderFromBinaryData(sourceBuffer);
 
   extractDataFromBinaryAndHeader(sourceBuffer);
@@ -81,9 +81,56 @@ void TokenRingPacket::Header::setPacketSenderName(const std::string &str) {
               std::min(UserIdentifierNameSize - 1, str.size()));
 }
 
-void TokenRingPacket::RegisterSubheader::setNeighborToDisconnectName(const std::string &str)
-{
+void TokenRingPacket::Header::setPacketReceiverName(const std::string &str) {
+  std::memset(packetReceiverName, 0, UserIdentifierNameSize);
+  std::memcpy(packetReceiverName, str.c_str(),
+              std::min(UserIdentifierNameSize - 1, str.size()));
+}
+
+std::string TokenRingPacket::Header::originalSenderNameToString() const {
+  if (originalSenderName[TokenRingPacket::UserIdentifierNameSize - 1] == 0) {
+    return std::string(originalSenderName);
+  } else {
+    return std::string(
+        originalSenderName,
+        originalSenderName + TokenRingPacket::UserIdentifierNameSize);
+  }
+}
+
+std::string TokenRingPacket::Header::packetSenderNameToString() const {
+  if (packetSenderName[TokenRingPacket::UserIdentifierNameSize - 1] == 0) {
+    return std::string(packetSenderName);
+  } else {
+    return std::string(
+        packetSenderName,
+        packetSenderName + TokenRingPacket::UserIdentifierNameSize);
+  }
+}
+
+std::string TokenRingPacket::Header::packetReceiverNameToString() const {
+  if (packetReceiverName[TokenRingPacket::UserIdentifierNameSize - 1] == 0) {
+    return std::string(packetReceiverName);
+  } else {
+    return std::string(
+        packetReceiverName,
+        packetReceiverName + TokenRingPacket::UserIdentifierNameSize);
+  }
+}
+
+void TokenRingPacket::RegisterSubheader::setNeighborToDisconnectName(
+    const std::string &str) {
   std::memset(neighborToDisconnectName, 0, UserIdentifierNameSize);
   std::memcpy(neighborToDisconnectName, str.c_str(),
               std::min(UserIdentifierNameSize - 1, str.size()));
+}
+
+std::string TokenRingPacket::RegisterSubheader::neighborToDisconnectNameToString() const
+{
+  if (neighborToDisconnectName[TokenRingPacket::UserIdentifierNameSize - 1] == 0) {
+    return std::string(neighborToDisconnectName);
+  } else {
+    return std::string(
+        neighborToDisconnectName,
+        neighborToDisconnectName + TokenRingPacket::UserIdentifierNameSize);
+  }
 }

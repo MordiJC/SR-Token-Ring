@@ -102,7 +102,11 @@ class Socket {
 
   std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom() noexcept(false);
 
- private:
+  Ip4 getConnectionIp() const;
+
+  unsigned short getConnectionPort() const;
+
+private:
   Socket select(struct timeval* tv) noexcept(false);
 
   void getProtocolTypeFromSocketOpts(int descriptor);

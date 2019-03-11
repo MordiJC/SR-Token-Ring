@@ -49,6 +49,72 @@ void TokenRingDispatcher::initializeSockets() {
                         programArguments.getNeighborPort());
 }
 
+std::vector<unsigned char> TokenRingDispatcher::prepareRegisterPacket(
+    Socket& incomingSocket) {
+  TokenRingPacket::RegisterSubheader registerSubheader;
+  registerSubheader.setNeighborToDisconnectName(
+      programArguments.getUserIdentifier());
+  registerSubheader.ip = incomingSocket.getConnectionIp();
+  registerSubheader.port = incomingSocket.getConnectionPort();
+
+  std::vector<unsigned char> registerSubheaderBinaryForm;
+  registerSubheaderBinaryForm.resize(sizeof(registerSubheader));
+  std::memcpy(registerSubheaderBinaryForm.data(), &registerSubheader,
+              sizeof(registerSubheader));
+
+  return registerSubheaderBinaryForm;
+}
+
+void TokenRingDispatcher::handleIncomingDataPacket(
+    TokenRingPacket& incomingPacket) {
+  if (incomingPacket.getHeader().tokenStatus) {
+    TokenRingPacket::Header header = incomingPacket.getHeader();
+    header.setPacketSenderName(programArguments.getUserIdentifier());
+    if (incomingPacket.getHeader().packetReceiverName ==
+        programArguments.getUserIdentifier()) {
+      std::cout << "[Host: @" << programArguments.getUserIdentifier()
+                << "] Received data: `"
+                << std::string(incomingPacket.getData().begin(),
+                               incomingPacket.getData().end())
+                << "\'" << std::endl;
+      header.setOriginalSenderName(programArguments.getUserIdentifier());
+      header.setPacketReceiverName(neighborName);
+    }
+    // else:
+    incomingPacket.setHeader(header);
+
+    incomingPacket.setData({});
+    hasToken = true;
+    dataPackets.push(incomingPacket);
+  }
+}
+
+void TokenRingDispatcher::handleIncomingJoinPacket(
+    TokenRingPacket& incomingPacket, Socket& incomingSocket) {
+  using trppt = TokenRingPacket::PacketType;
+  TokenRingPacket::Header header = incomingPacket.getHeader();
+  header.type = trppt::REGISTER;
+  incomingPacket.setHeader(header);
+
+  // Action performed when no neighbor is set
+  // (creating ring from one host)
+  if (neighborName.empty() && !neighborSocket) {  // First host in ring
+    neighborName = incomingPacket.getHeader().originalSenderNameToString();
+
+    neighborSocket = std::make_unique<Socket>(incomingSocket);
+  } else if (!neighborName.empty() && neighborSocket) {
+    std::vector<unsigned char> registerSubheaderBinaryForm =
+        prepareRegisterPacket(incomingSocket);
+
+    incomingPacket.setData(registerSubheaderBinaryForm);
+
+    registerRequestPackets.push(incomingPacket);
+  } else {
+    std::cerr << "[ERROR] Invalid state! Terminating!" << std::endl;
+    QuitStatusObserver::getInstance().quit();
+  }
+}
+
 void TokenRingDispatcher::run() {
   initializeSockets();
 
@@ -81,20 +147,31 @@ void TokenRingDispatcher::run() {
 
     switch (incomingPacket.getHeader().type) {
       case trppt::DATA:
-        dataPackets.push(incomingPacket);
+        handleIncomingDataPacket(incomingPacket);
         break;
 
-      case trppt::JOIN: {
-        TokenRingPacket::Header header = incomingPacket.getHeader();
-        header.type = trppt::REGISTER;
-        incomingPacket.setHeader(header);
-        registerRequestPackets.push(incomingPacket);
+      case trppt::JOIN:
+        handleIncomingJoinPacket(incomingPacket, incomingSocket);
+        break;
+      case trppt::REGISTER: {
+        TokenRingPacket::RegisterSubheader registerSubheader;
 
-        // TODO: perform registration routines
+        if (incomingPacket.getHeader().dataSize < sizeof(registerSubheader)) {
+          throw TokenRingDispatcherNotEnoughDataForRegisterSubheaderException(
+              "Incoming packet has not enough data to construct Register "
+              "Subheader");
+        }
+
+        std::memcpy(&registerSubheader, incomingPacket.getData().data(),
+                    sizeof(registerSubheader));
+
+        if (registerSubheader.neighborToDisconnectNameToString() ==
+            neighborName) {
+          // TODO: Disconnect neighbor and connect new
+        } else {
+          registerRequestPackets.push(incomingPacket);
+        }
       } break;
-      case trppt::REGISTER:
-        registerRequestPackets.push(incomingPacket);
-        break;
       default:
         std::cerr << "[ERROR] Unknown packet type. Packet type code: "
                   << static_cast<std::underlying_type_t<trppt>>(
@@ -103,5 +180,17 @@ void TokenRingDispatcher::run() {
     }
 
     // Handle packets from queues and send them
+    if (!registerRequestPackets.empty()) {
+      TokenRingPacket packetToSend = registerRequestPackets.front();
+      registerRequestPackets.pop();
+
+      outputSocket->send(packetToSend.toBinary());
+    } else if (!dataPackets.empty()) {
+      TokenRingPacket packetToSend = dataPackets.front();
+      dataPackets.pop();
+
+      outputSocket->send(packetToSend.toBinary());
+    }
+    // else: nothing to do. Check if has token and send data.
   }
 }

@@ -3,10 +3,16 @@
 
 #include <memory>
 #include <queue>
+#include <stdexcept>
 
 #include "programarguments.h"
 #include "socket.h"
 #include "tokenringpacket.h"
+
+using TokenRingDispatcherException = std::runtime_error;
+
+using TokenRingDispatcherNotEnoughDataForRegisterSubheaderException =
+    TokenRingDispatcherException;
 
 class TokenRingDispatcher {
  private:
@@ -20,7 +26,20 @@ class TokenRingDispatcher {
 
   ProgramArguments programArguments;
 
+  bool hasToken;
+
   TokenRingPacket createJoinPacket();
+
+  void sendJoinRequest();
+
+  void initializeSockets();
+
+  std::vector<unsigned char> prepareRegisterPacket(Socket& incomingSocket);
+
+  void handleIncomingDataPacket(TokenRingPacket& incomingPacket);
+
+  void handleIncomingJoinPacket(TokenRingPacket& incomingPacket,
+                                Socket& incomingSocket);
 
  public:
   TokenRingDispatcher(ProgramArguments args);
