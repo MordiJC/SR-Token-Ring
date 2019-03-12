@@ -183,6 +183,10 @@ Serializable::container_type TokenRingPacket::Header::toBinary() const {
   buffer.insert(buffer.end(), packetReceiverNameBuffer.begin(),
                 packetReceiverNameBuffer.end());
 
+  std::array<Serializable::data_type, sizeof(dataSize)> dataSizeBuffer;
+  std::memcpy(dataSizeBuffer.data(), &dataSize, sizeof(dataSize));
+  buffer.insert(buffer.end(), dataSizeBuffer.begin(), dataSizeBuffer.end());
+
   return buffer;
 }
 

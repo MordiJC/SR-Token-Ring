@@ -3,6 +3,8 @@
 
 #include <memory>
 #include <queue>
+#include <random>
+#include <set>
 #include <stdexcept>
 
 #include "programarguments.h"
@@ -31,6 +33,13 @@ class TokenRingDispatcher {
 
   bool hasToken;
 
+  std::string lastDataPacketSender;
+
+  std::set<std::string> tokenRingHosts;
+
+  std::mt19937 gen{std::random_device{}()};
+
+ private:
   TokenRingPacket createJoinPacket();
 
   void sendJoinRequest();
@@ -45,7 +54,32 @@ class TokenRingDispatcher {
   void handleIncomingJoinPacket(TokenRingPacket& incomingPacket,
                                 Socket& incomingSocket);
 
- public:
+  template <typename T>
+  T random(T min, T max) {
+    using dist = std::conditional_t<std::is_integral<T>::value,
+                                    std::uniform_int_distribution<T>,
+                                    std::uniform_real_distribution<T> >;
+    return dist{min, max}(gen);
+  }
+
+  template <typename T>
+  std::pair<T, bool> getNthElement(std::set<T> & searchSet, int n)
+  {
+    std::pair<T, bool> result;
+    if(searchSet.size() > n )
+    {
+      result.first = *(std::next(searchSet.begin(), n));
+      result.second = true;
+    }
+    else
+      result.second = false;
+
+    return result;
+  }
+
+  TokenRingPacket createAndPrepareGreetingsPacketToSend();
+
+public:
   TokenRingDispatcher(ProgramArguments args);
 
   void run();

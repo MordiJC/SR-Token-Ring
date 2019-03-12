@@ -15,6 +15,7 @@ void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
                      &socketTypeSize);
 
   if (ret == -1) {
+    perror("Unable to get socket type opt");
     throw SocketException("Unable to get socket type opt");
   }
 
@@ -34,7 +35,7 @@ void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
   }
 }
 
-void Socket::getIpAndFortFromSocket(int descriptor, bool peer) {
+void Socket::getIpAndPortPromSocket(int descriptor, bool peer) {
   int ret = 0;
   struct sockaddr_in socketAddressStruct;
   unsigned int socketAddressStructSize = sizeof(socketAddressStruct);
@@ -57,23 +58,41 @@ void Socket::getIpAndFortFromSocket(int descriptor, bool peer) {
   }
 
   connectionIp = Ip4(socketAddressStruct.sin_addr);
-  connectionPort = socketAddressStruct.sin_port;
+  connectionPort = ntohs(socketAddressStruct.sin_port);
 }
 
-Ip4 Socket::getConnectionIp() const
-{
-  return connectionIp;
+Ip4 Socket::getConnectionIp() const { return connectionIp; }
+
+unsigned short Socket::getConnectionPort() const { return connectionPort; }
+
+Ip4 Socket::getIp() const {
+  struct sockaddr_in sockAddrIn;
+  socklen_t len = sizeof(sockAddrIn);
+  if (::getsockname(socketDescriptor,
+                    reinterpret_cast<struct sockaddr *>(&sockAddrIn),
+                    &len) == -1) {
+    perror("getsockname");
+    throw SocketException("Failed to acquire socket IP");
+  } else
+    return Ip4(sockAddrIn.sin_addr);
 }
 
-unsigned short Socket::getConnectionPort() const
-{
-  return connectionPort;
+unsigned short Socket::getPort() const {
+  struct sockaddr_in sockAddrIn;
+  socklen_t len = sizeof(sockAddrIn);
+  if (::getsockname(socketDescriptor,
+                    reinterpret_cast<struct sockaddr *>(&sockAddrIn),
+                    &len) == -1) {
+    perror("getsockname");
+    throw SocketException("Failed to acquire socket port");
+  } else
+    return ntohs(sockAddrIn.sin_port);
 }
 
 Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
   getProtocolTypeFromSocketOpts(descriptor);
 
-  getIpAndFortFromSocket(descriptor, peer);
+  getIpAndPortPromSocket(descriptor, peer);
 }
 
 Socket::Socket(int descriptor, in_addr address,
@@ -103,11 +122,12 @@ Socket::Socket(Protocol protocol) noexcept(false) : protocol(protocol) {
   if (socketDescriptor == -1) {
     throw SocketCreationFailedException("Failed to create socket");
   }
-
-  connectionStatus = ConnectionStatus::NORMAL;
 }
 
-Socket::~Socket() { ::close(socketDescriptor); }
+Socket::~Socket() {
+  ::shutdown(socketDescriptor, SHUT_RDWR);
+  ::close(socketDescriptor);
+}
 
 void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
   struct sockaddr_in socketAddressStruct;
@@ -115,7 +135,7 @@ void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
   std::memset(&socketAddressStruct, 0, sizeof(struct sockaddr_in));
 
   socketAddressStruct.sin_addr = ip.getAddress();
-  socketAddressStruct.sin_port = port;
+  socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
   int ret = ::bind(socketDescriptor,
@@ -128,8 +148,6 @@ void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
 
   connectionIp = ip;
   connectionPort = port;
-
-  connectionStatus = ConnectionStatus::BOUND;
 }
 
 void Socket::connect(const Ip4 &ip, unsigned short port) {
@@ -138,7 +156,7 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
   std::memset(&socketAddressStruct, 0, sizeof(struct sockaddr_in));
 
   socketAddressStruct.sin_addr = ip.getAddress();
-  socketAddressStruct.sin_port = port;
+  socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
   int ret = ::connect(socketDescriptor,
@@ -152,8 +170,6 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
 
   connectionIp = ip;
   connectionPort = port;
-
-  connectionStatus = ConnectionStatus::CONNECTED;
 }
 
 void Socket::listen(int backlog) noexcept(false) {
@@ -183,6 +199,29 @@ Socket Socket::select(const std::chrono::seconds &timeout) noexcept(false) {
   return select(std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
 }
 
+Socket Socket::select(struct timeval *tv) noexcept(false) {
+  int peendingConnections = 0;
+  fd_set readfds;
+
+  FD_ZERO(&readfds);
+  FD_SET(socketDescriptor, &readfds);
+
+  peendingConnections =
+      ::select(socketDescriptor, &readfds, nullptr, nullptr, tv);
+
+  if (peendingConnections == -1) {
+    throw SocketSelectFailedException("Failed to select socket");
+  } else if (peendingConnections == 0) {
+    throw SocketSelectTimeoutException("Socket select timout");
+  }
+
+  if (FD_ISSET(socketDescriptor, &readfds)) {
+    return accept();
+  }
+
+  throw SocketSelectTimeoutException("Socket select general error");
+}
+
 Socket Socket::accept() noexcept(false) {
   int descriptor = 0;
   struct sockaddr_in incomingAddress;
@@ -196,7 +235,8 @@ Socket Socket::accept() noexcept(false) {
     throw SocketAcceptFailedException("Failed to accept connection");
   }
 
-  return Socket(descriptor, incomingAddress.sin_addr, incomingAddress.sin_port);
+  return Socket(descriptor, incomingAddress.sin_addr,
+                ntohs(incomingAddress.sin_port));
 }
 
 void Socket::send(const std::vector<unsigned char> &data) noexcept(false) {
@@ -219,7 +259,7 @@ void Socket::sendTo(const std::vector<unsigned char> &data,
   ::memset(&destinationAddress, 0, sizeof(destinationAddress));
 
   destinationAddress.sin_addr = destination.getAddress();
-  destinationAddress.sin_port = port;
+  destinationAddress.sin_port = htons(port);
   destinationAddress.sin_family = AF_INET;
 
   sentSize = ::sendto(socketDescriptor, data.data(), data.size(), 0,
@@ -246,7 +286,7 @@ std::vector<unsigned char> Socket::receive() noexcept(false) {
 
 std::pair<Socket::IpAndPortPair, std::vector<unsigned char>>
 Socket::receiveFrom() noexcept(false) {
-  std::vector<unsigned char> buffer(bufferSize);  // TODO: add lock_guard on recursive_mutex to secure buffer
+  std::vector<unsigned char> buffer(bufferSize);
   ssize_t recvSize = 0;
 
   struct sockaddr_in sourceAddress;
@@ -265,23 +305,6 @@ Socket::receiveFrom() noexcept(false) {
       buffer);
 }
 
-Socket Socket::select(struct timeval *tv) noexcept(false) {
-  int selectedDescriptor = 0;
-  fd_set readfds;
-
-  FD_ZERO(&readfds);
-  FD_SET(socketDescriptor, &readfds);
-
-  selectedDescriptor =
-      ::select(socketDescriptor, &readfds, nullptr, nullptr, tv);
-
-  if (selectedDescriptor == -1) {
-    if (tv != nullptr) {
-      throw SocketSelectFailedException("Failed to select socket");
-    } else {
-      throw SocketSelectTimeoutException("Socket select timout");
-    }
-  }
-
-  return Socket(selectedDescriptor, true);
+void Socket::disconnect() noexcept {
+  ::shutdown(this->socketDescriptor, SHUT_RDWR);
 }

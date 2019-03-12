@@ -37,15 +37,6 @@ using SocketReceivingFailedException = SocketException;
 
 class Socket {
  public:
-  enum class ConnectionStatus : unsigned int {
-    NONE = 0u,
-    NORMAL,
-    BOUND,
-    CONNECTED,
-
-    NUMBER  //! Number of states
-  };
-
   static const int bufferSize = 1024;
 
   using IpAndPortPair = std::pair<Ip4, unsigned short>;
@@ -56,8 +47,6 @@ class Socket {
 
   Ip4 connectionIp;
   unsigned short connectionPort;
-
-  ConnectionStatus connectionStatus = ConnectionStatus::NORMAL;
 
  private:
   explicit Socket(int descriptor, bool peer = false) noexcept(false);
@@ -100,18 +89,25 @@ class Socket {
 
   std::vector<unsigned char> receive() noexcept(false);
 
-  std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom() noexcept(false);
+  std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom() noexcept(
+      false);
+
+  void disconnect() noexcept;
 
   Ip4 getConnectionIp() const;
 
   unsigned short getConnectionPort() const;
 
-private:
+  Ip4 getIp() const;
+
+  unsigned short getPort() const;
+
+ private:
   Socket select(struct timeval* tv) noexcept(false);
 
   void getProtocolTypeFromSocketOpts(int descriptor);
 
-  void getIpAndFortFromSocket(int descriptor, bool peer);
+  void getIpAndPortPromSocket(int descriptor, bool peer);
 };
 
 #endif  // SOCKET_H

@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
             << "UserId: " << args.getUserIdentifier() << std::endl
             << "Port: " << args.getPort() << std::endl
             << "NeighborIp: " << args.getNeighborIp().to_string() << std::endl
-            << "NeighborPort: " << args.getPort() << std::endl
+            << "NeighborPort: " << args.getNeighborPort() << std::endl
             << "HasToken: " << std::boolalpha << args.getHasToken() << std::endl
             << std::endl;
 
