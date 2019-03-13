@@ -11,27 +11,10 @@
 
 using Ip4InvalidInputException = std::runtime_error;
 
-class Ip4: public Serializable {
- private:
-  struct in_addr address;
+using Ip4 = struct in_addr;
 
- public:
-  Ip4() noexcept;
+Ip4 Ip4_from_string(const std::string& str);
 
-  explicit Ip4(struct in_addr& socketAddress) noexcept;
-
-  explicit Ip4(const std::string& inputIpAddress) noexcept(false);
-
-  in_addr getAddress() const;
-
-  std::string to_string() const;
-
-  static const size_t SIZE = sizeof(address);
-
-  // Serializable interface
-public:
-  Serializable::size_type fromBinary(const Serializable::container_type &buffer);
-  Serializable::container_type toBinary() const;
-};
+std::string to_string(const Ip4& ip4);
 
 #endif  // IP4_H

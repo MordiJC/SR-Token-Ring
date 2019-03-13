@@ -37,26 +37,16 @@ void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
   }
 }
 
-void Socket::getIpAndPortPromSocket(int descriptor, bool peer) {
+void Socket::getIpAndPortPromSocket(int descriptor) {
   int ret = 0;
   struct sockaddr_in socketAddressStruct;
   unsigned int socketAddressStructSize = sizeof(socketAddressStruct);
-  if (peer) {
-    ret = ::getpeername(
-        descriptor, reinterpret_cast<struct sockaddr *>(&socketAddressStruct),
-        &socketAddressStructSize);
+  ret = ::getpeername(descriptor,
+                      reinterpret_cast<struct sockaddr *>(&socketAddressStruct),
+                      &socketAddressStructSize);
 
-    if (ret == -1) {
-      throw SocketException("Unable to get connection IP and port number");
-    }
-  } else {
-    ret = ::getsockname(
-        descriptor, reinterpret_cast<struct sockaddr *>(&socketAddressStruct),
-        &socketAddressStructSize);
-
-    if (ret == -1) {
-      throw SocketException("Unable to get connection IP and port number");
-    }
+  if (ret == -1) {
+    throw SocketException("Unable to get connection IP and port number");
   }
 
   connectionIp = Ip4(socketAddressStruct.sin_addr);
@@ -98,10 +88,17 @@ bool Socket::hasAnyDataToRead() const {
   return count > 0;
 }
 
-Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
+int Socket::dataToRead() const {
+  int count;
+  ioctl(socketDescriptor, FIONREAD, &count);
+
+  return count;
+}
+
+Socket::Socket(int descriptor) : socketDescriptor(descriptor) {
   getProtocolTypeFromSocketOpts(descriptor);
 
-  getIpAndPortPromSocket(descriptor, peer);
+  getIpAndPortPromSocket(descriptor);
 }
 
 Socket::Socket(int descriptor, in_addr address,
@@ -137,6 +134,34 @@ Socket::Socket(Protocol protocol) noexcept(false) : protocol(protocol) {
   }
 }
 
+Socket::Socket(const Socket &other)
+    : protocol(other.protocol),
+      socketDescriptor(other.socketDescriptor),
+      connectionIp(other.connectionIp),
+      connectionPort(other.connectionPort) {}
+
+Socket::Socket(Socket &&other)
+    : protocol(other.protocol),
+      socketDescriptor(other.socketDescriptor),
+      connectionIp(other.connectionIp),
+      connectionPort(other.connectionPort) {}
+
+Socket &Socket::operator=(const Socket &other) {
+  protocol = other.protocol;
+  socketDescriptor = other.socketDescriptor;
+  connectionIp = other.connectionIp;
+  connectionPort = other.connectionPort;
+  return *this;
+}
+
+Socket &Socket::operator=(Socket &&other) {
+  protocol = other.protocol;
+  socketDescriptor = other.socketDescriptor;
+  connectionIp = other.connectionIp;
+  connectionPort = other.connectionPort;
+  return *this;
+}
+
 Socket::~Socket() {}
 
 void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
@@ -144,7 +169,7 @@ void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
 
   std::memset(&socketAddressStruct, 0, sizeof(struct sockaddr_in));
 
-  socketAddressStruct.sin_addr = ip.getAddress();
+  socketAddressStruct.sin_addr = ip;
   socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
@@ -165,11 +190,11 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
 
   std::memset(&socketAddressStruct, 0, sizeof(struct sockaddr_in));
 
-  socketAddressStruct.sin_addr = ip.getAddress();
+  socketAddressStruct.sin_addr = ip;
   socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
-  std::cout << "[INFO] Connecting to " << ip.to_string() << ':' << port
+  std::cout << "[INFO] Connecting to " << to_string(ip) << ':' << port
             << std::endl;
 
   int ret = ::connect(socketDescriptor,
@@ -257,7 +282,7 @@ Socket Socket::accept() noexcept(false) {
 void Socket::send(const std::vector<unsigned char> &data) noexcept(false) {
   ssize_t sentSize = 0;
 
-  sentSize = ::send(socketDescriptor, data.data(), data.size(), MSG_NOSIGNAL);
+  sentSize = ::send(socketDescriptor, data.data(), data.size(), 0);
 
   if (sentSize == -1) {
     perror("Failed to send data");
@@ -274,7 +299,7 @@ void Socket::sendTo(const std::vector<unsigned char> &data,
 
   ::memset(&destinationAddress, 0, sizeof(destinationAddress));
 
-  destinationAddress.sin_addr = destination.getAddress();
+  destinationAddress.sin_addr = destination;
   destinationAddress.sin_port = htons(port);
   destinationAddress.sin_family = AF_INET;
 
@@ -288,12 +313,14 @@ void Socket::sendTo(const std::vector<unsigned char> &data,
 }
 
 std::vector<unsigned char> Socket::receive() noexcept(false) {
-  std::vector<unsigned char> buffer(bufferSize);
+  std::vector<unsigned char> buffer;
+  buffer.resize(bufferSize);
   ssize_t recvSize = 0;
 
   recvSize = ::recv(socketDescriptor, buffer.data(), bufferSize, 0);
 
   if (recvSize == -1) {
+    perror("Failed to receive data from socket");
     throw SocketReceivingFailedException("Failed to receive data from socket");
   }
 
@@ -308,7 +335,7 @@ Socket::receiveFrom() noexcept(false) {
   ssize_t recvSize = 0;
 
   struct sockaddr_in sourceAddress;
-  unsigned int sourceAddressSize = sizeof(sourceAddress);
+  socklen_t sourceAddressSize = sizeof(struct sockaddr_in);
 
   recvSize = ::recvfrom(socketDescriptor, buffer.data(), bufferSize, 0,
                         reinterpret_cast<struct sockaddr *>(&sourceAddress),
@@ -318,9 +345,15 @@ Socket::receiveFrom() noexcept(false) {
     throw SocketReceivingFailedException("Failed to receive data from socket");
   }
 
-  return std::make_pair(
-      std::make_pair(Ip4(sourceAddress.sin_addr), sourceAddress.sin_port),
-      buffer);
+  std::cout << "[INFO][RECVFROM] Received from "
+            << to_string(sourceAddress.sin_addr) << ':'
+            << ntohs(sourceAddress.sin_port) << std::endl;
+
+  buffer.resize(static_cast<size_t>(recvSize));
+
+  return std::make_pair(std::make_pair(Ip4(sourceAddress.sin_addr),
+                                       ntohs(sourceAddress.sin_port)),
+                        buffer);
 }
 
 void Socket::disconnect() noexcept {

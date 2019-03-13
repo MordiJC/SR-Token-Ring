@@ -49,8 +49,8 @@ class TokenRingDispatcher {
 
   void initializeSockets();
 
-  std::vector<unsigned char> preparePacketRegisterSubheaderFromJoinPacket(
-      Socket& incomingSocket, const TokenRingPacket& joinPacket);
+  void preparePacketRegisterSubheaderFromJoinPacket(
+      Socket& incomingSocket, TokenRingPacket::Header& header);
 
   void handleIncomingDataPacket(TokenRingPacket& incomingPacket);
 
@@ -68,15 +68,12 @@ class TokenRingDispatcher {
   }
 
   template <typename T>
-  std::pair<T, bool> getNthElement(std::set<T> & searchSet, int n)
-  {
+  std::pair<T, bool> getNthElement(std::set<T>& searchSet, int n) {
     std::pair<T, bool> result;
-    if(searchSet.size() > n )
-    {
+    if (searchSet.size() > n) {
       result.first = *(std::next(searchSet.begin(), n));
       result.second = true;
-    }
-    else
+    } else
       result.second = false;
 
     return result;
@@ -84,7 +81,7 @@ class TokenRingDispatcher {
 
   TokenRingPacket createAndPrepareGreetingsPacketToSend();
 
-public:
+ public:
   TokenRingDispatcher(ProgramArguments args);
 
   void run();

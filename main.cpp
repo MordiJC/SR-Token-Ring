@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Program arguments:" << std::endl
             << "UserId: " << args.getUserIdentifier() << std::endl
             << "Port: " << args.getPort() << std::endl
-            << "NeighborIp: " << args.getNeighborIp().to_string() << std::endl
+            << "NeighborIp: " << to_string(args.getNeighborIp()) << std::endl
             << "NeighborPort: " << args.getNeighborPort() << std::endl
             << "HasToken: " << std::boolalpha << args.getHasToken() << std::endl
             << "Protocol: " << protocolString << std::endl;

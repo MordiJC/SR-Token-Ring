@@ -3,6 +3,7 @@
 
 #include <cstdint>
 
+#include <array>
 #include <stdexcept>
 #include <vector>
 
@@ -12,6 +13,8 @@
 using TokenRingPacketException = std::runtime_error;
 
 using TokenRingPacketInputBufferTooSmallException = TokenRingPacketException;
+
+using TokenRingPacketTooMuchDataException = TokenRingPacketException;
 
 class TokenRingPacket : public Serializable {
  public:
@@ -30,9 +33,10 @@ class TokenRingPacket : public Serializable {
 
   static const size_t UserIdentifierNameSize = 16;
 
+  static const size_t DataMaxSize = 512;
+
 #pragma pack(push, 1)
-  class Header : public Serializable {
-   public:
+  struct Header {
     PacketType type;
     TokenStatus_t tokenStatus;
 
@@ -42,62 +46,21 @@ class TokenRingPacket : public Serializable {
                                                       // maximum chars = 15
     char packetReceiverName[UserIdentifierNameSize];
 
-    uint16_t dataSize;  // size of data
+    // used in REGISTER packet
 
-   public:
-    virtual ~Header() = default;
-
-    void setOriginalSenderName(const std::string& str);
-
-    void setPacketSenderName(const std::string& str);
-
-    void setPacketReceiverName(const std::string& str);
-
-    std::string originalSenderNameToString() const;
-
-    std::string packetSenderNameToString() const;
-
-    std::string packetReceiverNameToString() const;
-
-    Serializable::size_type fromBinary(
-        const Serializable::container_type& buffer);
-
-    Serializable::container_type toBinary() const;
-
-    static const size_t SIZE =
-        sizeof(type) + sizeof(tokenStatus) + sizeof(originalSenderName) +
-        sizeof(packetSenderName) + sizeof(packetReceiverName) + sizeof(dataSize);
-  };
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-  class RegisterSubheader : public Serializable {
-   public:
-    // New host data
-    Ip4 ip;
-    unsigned short port;
-
-   public:
-    virtual ~RegisterSubheader() = default;
-
-    // New host neighbor name
     char neighborToDisconnectName[UserIdentifierNameSize];
 
-    void setNeighborToDisconnectName(const std::string& str);
+    Ip4 registerIp;
 
-    std::string neighborToDisconnectNameToString() const;
+    unsigned short registerPort;
 
-    Serializable::size_type fromBinary(const container_type& buffer);
-
-    container_type toBinary() const;
-
-    static const size_t SIZE = Ip4::SIZE + sizeof(port);
+    uint16_t dataSize;
   };
 #pragma pack(pop)
 
  private:
   Header header;
-  std::vector<unsigned char> data;
+  std::array< char, DataMaxSize> data;
 
   Serializable::size_type constructHeaderFromBinaryData(
       const std::vector<unsigned char>& sourceBuffer);
@@ -117,7 +80,9 @@ class TokenRingPacket : public Serializable {
 
   void setHeader(const Header& value);
 
-  const std::vector<unsigned char>& getData() const;
+  const std::vector<unsigned char> getData() const;
+
+  const std::vector<char> getDataAsSignedCharsVector() const;
 
   void setData(const std::vector<unsigned char>& value);
 

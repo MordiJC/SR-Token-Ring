@@ -45,11 +45,11 @@ class Socket {
   Protocol protocol = Protocol::NONE;
   int socketDescriptor;
 
-  Ip4 connectionIp;
-  unsigned short connectionPort;
+  Ip4 connectionIp{0};
+  unsigned short connectionPort{0};
 
  private:
-  explicit Socket(int descriptor, bool peer = false) noexcept(false);
+  explicit Socket(int descriptor) noexcept(false);
 
   explicit Socket(int descriptor, in_addr address,
                   unsigned short port) noexcept(false);
@@ -57,11 +57,11 @@ class Socket {
  public:
   explicit Socket(Protocol protocol) noexcept(false);
 
-  Socket(const Socket&) = default;
-  Socket(Socket&&) = default;
+  Socket(const Socket&);
+  explicit Socket(Socket&&);
 
-  Socket& operator=(const Socket&) = delete;
-  Socket& operator=(Socket&&) = default;
+  Socket& operator=(const Socket&);
+  Socket& operator=(Socket&&);
 
   ~Socket();
 
@@ -106,12 +106,14 @@ class Socket {
 
   bool hasAnyDataToRead() const;
 
+  int dataToRead() const;
+
  private:
   Socket select(struct timeval* tv) noexcept(false);
 
   void getProtocolTypeFromSocketOpts(int descriptor);
 
-  void getIpAndPortPromSocket(int descriptor, bool peer);
+  void getIpAndPortPromSocket(int descriptor);
 };
 
 #endif  // SOCKET_H

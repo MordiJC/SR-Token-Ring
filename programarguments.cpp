@@ -31,7 +31,7 @@ void ProgramArguments::parseUserPort(const std::string &input) {
 
 void ProgramArguments::parseNeighborIp(const std::string &input) {
   try {
-    Ip4 ip(input);
+    Ip4 ip = Ip4_from_string(input);
     neighborIp = ip;
   } catch (const Ip4InvalidInputException &ex) {
     throw ProgramArgumentsInvalidNeighborIpAddressException(ex.what());
