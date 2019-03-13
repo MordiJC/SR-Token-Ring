@@ -26,6 +26,8 @@ class Ip4: public Serializable {
 
   std::string to_string() const;
 
+  static const size_t SIZE = sizeof(address);
+
   // Serializable interface
 public:
   Serializable::size_type fromBinary(const Serializable::container_type &buffer);

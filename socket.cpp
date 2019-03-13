@@ -1,8 +1,10 @@
 #include "socket.h"
 
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <cstring>
+#include <iostream>
 
 void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
   int socketTypeOpt = 0;
@@ -89,6 +91,13 @@ unsigned short Socket::getPort() const {
     return ntohs(sockAddrIn.sin_port);
 }
 
+bool Socket::hasAnyDataToRead() const {
+  int count;
+  ioctl(socketDescriptor, FIONREAD, &count);
+
+  return count > 0;
+}
+
 Socket::Socket(int descriptor, bool peer) : socketDescriptor(descriptor) {
   getProtocolTypeFromSocketOpts(descriptor);
 
@@ -122,12 +131,13 @@ Socket::Socket(Protocol protocol) noexcept(false) : protocol(protocol) {
   if (socketDescriptor == -1) {
     throw SocketCreationFailedException("Failed to create socket");
   }
+
+  if (protocol == Protocol::TCP) {
+    setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, nullptr, 0);
+  }
 }
 
-Socket::~Socket() {
-  ::shutdown(socketDescriptor, SHUT_RDWR);
-  ::close(socketDescriptor);
-}
+Socket::~Socket() {}
 
 void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
   struct sockaddr_in socketAddressStruct;
@@ -159,6 +169,9 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
   socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
+  std::cout << "[INFO] Connecting to " << ip.to_string() << ':' << port
+            << std::endl;
+
   int ret = ::connect(socketDescriptor,
                       reinterpret_cast<struct sockaddr *>(&socketAddressStruct),
                       sizeof(socketAddressStruct));
@@ -173,10 +186,12 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
 }
 
 void Socket::listen(int backlog) noexcept(false) {
-  int ret = ::listen(socketDescriptor, backlog);
+  if (protocol == Protocol::TCP) {
+    int ret = ::listen(socketDescriptor, backlog);
 
-  if (ret == -1) {
-    throw SocketListenFailedException("Failed to listen on socket");
+    if (ret == -1) {
+      throw SocketListenFailedException("Failed to listen on socket");
+    }
   }
 }
 
@@ -207,7 +222,7 @@ Socket Socket::select(struct timeval *tv) noexcept(false) {
   FD_SET(socketDescriptor, &readfds);
 
   peendingConnections =
-      ::select(socketDescriptor, &readfds, nullptr, nullptr, tv);
+      ::select(socketDescriptor + 1, &readfds, nullptr, nullptr, tv);
 
   if (peendingConnections == -1) {
     throw SocketSelectFailedException("Failed to select socket");
@@ -231,7 +246,7 @@ Socket Socket::accept() noexcept(false) {
                         reinterpret_cast<struct sockaddr *>(&incomingAddress),
                         &incomingAddressSize);
 
-  if (descriptor == -1) {
+  if (descriptor < 0) {
     throw SocketAcceptFailedException("Failed to accept connection");
   }
 
@@ -242,9 +257,10 @@ Socket Socket::accept() noexcept(false) {
 void Socket::send(const std::vector<unsigned char> &data) noexcept(false) {
   ssize_t sentSize = 0;
 
-  sentSize = ::send(socketDescriptor, data.data(), data.size(), 0);
+  sentSize = ::send(socketDescriptor, data.data(), data.size(), MSG_NOSIGNAL);
 
   if (sentSize == -1) {
+    perror("Failed to send data");
     throw SocketSendingFailedException("Failed to send data");
   }
 }
@@ -281,6 +297,8 @@ std::vector<unsigned char> Socket::receive() noexcept(false) {
     throw SocketReceivingFailedException("Failed to receive data from socket");
   }
 
+  buffer.resize(static_cast<size_t>(recvSize));
+
   return buffer;
 }
 
@@ -308,3 +326,5 @@ Socket::receiveFrom() noexcept(false) {
 void Socket::disconnect() noexcept {
   ::shutdown(this->socketDescriptor, SHUT_RDWR);
 }
+
+void Socket::close() noexcept { ::close(socketDescriptor); }

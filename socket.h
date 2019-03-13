@@ -94,6 +94,8 @@ class Socket {
 
   void disconnect() noexcept;
 
+  void close() noexcept;
+
   Ip4 getConnectionIp() const;
 
   unsigned short getConnectionPort() const;
@@ -101,6 +103,8 @@ class Socket {
   Ip4 getIp() const;
 
   unsigned short getPort() const;
+
+  bool hasAnyDataToRead() const;
 
  private:
   Socket select(struct timeval* tv) noexcept(false);

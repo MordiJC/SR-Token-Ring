@@ -8,7 +8,7 @@ TokenRingPacket::TokenRingPacket() {}
 
 Serializable::size_type TokenRingPacket::constructHeaderFromBinaryData(
     const std::vector<unsigned char> &sourceBuffer) {
-  if (sourceBuffer.size() < sizeof(Header)) {
+  if (sourceBuffer.size() < TokenRingPacket::Header::SIZE) {
     throw TokenRingPacketInputBufferTooSmallException(
         "Passed input buffer is too small");
   }
@@ -18,14 +18,14 @@ Serializable::size_type TokenRingPacket::constructHeaderFromBinaryData(
 
 Serializable::size_type TokenRingPacket::extractDataFromBinaryAndHeader(
     const std::vector<unsigned char> &sourceBuffer) {
-  if (sourceBuffer.size() - sizeof(header) < header.dataSize) {
+  if (sourceBuffer.size() - TokenRingPacket::Header::SIZE < header.dataSize) {
     throw TokenRingPacketInputBufferTooSmallException(
         "Passed input buffer contains less data than declared in header");
   }
 
   data.resize(header.dataSize);
 
-  std::memcpy(data.data(), &sourceBuffer.data()[sizeof(header)],
+  std::memcpy(data.data(), &sourceBuffer.data()[TokenRingPacket::Header::SIZE],
               header.dataSize);
 
   return header.dataSize;

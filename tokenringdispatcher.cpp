@@ -73,8 +73,6 @@ void TokenRingDispatcher::initializeSockets() {
   outputSocket->connect(programArguments.getNeighborIp(),
                         programArguments.getNeighborPort());
 
-
-
   std::cout << "[INFO] Output socket connected "
             << outputSocket->getIp().to_string() << ':'
             << outputSocket->getPort() << " -> "
@@ -124,17 +122,36 @@ void TokenRingDispatcher::handleIncomingDataPacket(
 void TokenRingDispatcher::handleIncomingJoinPacket(
     TokenRingPacket& incomingPacket, Socket& incomingSocket) {
   using trppt = TokenRingPacket::PacketType;
-  TokenRingPacket::Header header = incomingPacket.getHeader();
-  header.type = trppt::REGISTER;
-  incomingPacket.setHeader(header);
 
-  // Action performed when no neighbor is set
-  // (creating ring from one host)
-  if (neighborName.empty() && !neighborSocket) {  // First host in ring
-    neighborName = incomingPacket.getHeader().originalSenderNameToString();
+  if (incomingPacket.getHeader().originalSenderNameToString() ==
+      programArguments.getUserIdentifier()) {
+    std::cout << "[INFO] Adding self to token ring hosts list" << std::endl;
+    TokenRingPacket::RegisterSubheader registerSubheader;
 
-    neighborSocket = std::make_unique<Socket>(incomingSocket);
-  } else if (!neighborName.empty() && neighborSocket) {
+    if (incomingPacket.getHeader().dataSize < TokenRingPacket::RegisterSubheader::SIZE) {
+      throw TokenRingDispatcherNotEnoughDataForRegisterSubheaderException(
+          "Incoming packet has not enough data to construct Register "
+          "Subheader");
+    }
+
+    registerSubheader.fromBinary(incomingPacket.getData());
+
+    tokenRingHosts.insert(
+        incomingPacket.getHeader().originalSenderNameToString());
+
+
+    outputSocket->disconnect();
+    outputSocket->close();
+    delete outputSocket.release();
+    outputSocket = std::make_unique<Socket>(programArguments.getProtocol());
+    outputSocket->connect(registerSubheader.ip, registerSubheader.port);
+
+    neighborIp = registerSubheader.ip;
+    neighborPort = registerSubheader.port;
+  } else {
+    TokenRingPacket::Header header = incomingPacket.getHeader();
+    header.type = trppt::REGISTER;
+    incomingPacket.setHeader(header);
     std::vector<unsigned char> registerSubheaderBinaryForm =
         preparePacketRegisterSubheaderFromJoinPacket(incomingSocket,
                                                      incomingPacket);
@@ -142,10 +159,11 @@ void TokenRingDispatcher::handleIncomingJoinPacket(
     incomingPacket.setData(registerSubheaderBinaryForm);
 
     registerRequestPackets.push(incomingPacket);
-  } else {
+  }
+  /* else {
     std::cerr << "[ERROR] Invalid state! Terminating!" << std::endl;
     QuitStatusObserver::getInstance().quit();
-  }
+  }*/
 }
 
 TokenRingPacket TokenRingDispatcher::createAndPrepareGreetingsPacketToSend() {
@@ -177,20 +195,59 @@ TokenRingPacket TokenRingDispatcher::createAndPrepareGreetingsPacketToSend() {
   return packet;
 }
 
+void TokenRingDispatcher::handleIncomingRegisterPacket(
+    TokenRingPacket& incomingPacket) {
+  std::cout << "[INFO] Handling incoming REGISTER packet" << std::endl;
+  TokenRingPacket::RegisterSubheader registerSubheader;
+
+  if (incomingPacket.getHeader().dataSize < TokenRingPacket::RegisterSubheader::SIZE) {
+    throw TokenRingDispatcherNotEnoughDataForRegisterSubheaderException(
+        "Incoming packet has not enough data to construct Register Subheader");
+  }
+
+  tokenRingHosts.insert(
+      incomingPacket.getHeader().originalSenderNameToString());
+
+  registerSubheader.fromBinary(incomingPacket.getData());
+
+  if (registerSubheader.neighborToDisconnectNameToString() == neighborName) {
+    // TODO: Disconnect next neighbor and connect new
+    outputSocket->disconnect();
+    outputSocket->close();
+    delete outputSocket.release();
+    outputSocket = std::make_unique<Socket>(programArguments.getProtocol());
+    outputSocket->connect(registerSubheader.ip, registerSubheader.port);
+    neighborIp = registerSubheader.ip;
+    neighborPort = registerSubheader.port;
+  } else {
+    registerRequestPackets.push(incomingPacket);
+  }
+}
+
 void TokenRingDispatcher::run() {
   initializeSockets();
 
   sendJoinRequest();
 
   TokenRingPacket incomingPacket;
-  std::vector<unsigned char> incomingBuffer;
+  Serializable::container_type incomingBuffer;
 
   while (!QuitStatusObserver::getInstance().shouldQuit()) {
+    std::cout << "Any data to read: " << std::boolalpha
+              << neighborSocket->hasAnyDataToRead() << std::endl;
     try {
       Socket incomingSocket = neighborSocket->select(std::chrono::seconds{5});
+      // Socket incomingSocket = neighborSocket->accept();
+
+      std::cout << "[INFO] Select passed positive" << std::endl;
 
       try {
-        incomingBuffer = incomingSocket.receive();
+        if (programArguments.getProtocol() == Protocol::TCP) {
+          incomingBuffer = incomingSocket.receive();
+          std::cout << "[INFO] Received packet size: " << incomingBuffer.size() << std::endl;
+        } else {
+          incomingBuffer = incomingSocket.receiveFrom().second;
+        }
 
       } catch (const SocketReceivingFailedException& ex) {
         std::cerr << "[ERROR] Socket receiving failed: " << ex.what()
@@ -219,35 +276,16 @@ void TokenRingDispatcher::run() {
         case trppt::JOIN:
           std::cout << "[INFO] Handling incoming JOIN packet" << std::endl;
           handleIncomingJoinPacket(incomingPacket, incomingSocket);
+          shouldPass = true;
           break;
         case trppt::REGISTER: {
-          std::cout << "[INFO] Handling incoming REGISTER packet" << std::endl;
-          TokenRingPacket::RegisterSubheader registerSubheader;
-
-          if (incomingPacket.getHeader().dataSize < sizeof(registerSubheader)) {
-            std::cerr << "[ERROR] Incoming packet has not enough data to "
-                         "construct Register "
-                         "Subheader"
-                      << std::endl;
-
+          try {
+            handleIncomingRegisterPacket(incomingPacket);
+          } catch (
+              const TokenRingDispatcherNotEnoughDataForRegisterSubheaderException&
+                  ex) {
+            std::cerr << "[ERROR] " << ex.what() << std::endl;
             shouldPass = true;
-            break;
-          }
-
-          tokenRingHosts.insert(
-              incomingPacket.getHeader().originalSenderNameToString());
-
-          registerSubheader.fromBinary(incomingPacket.getData());
-
-          if (registerSubheader.neighborToDisconnectNameToString() ==
-              neighborName) {
-            // TODO: Disconnect next neighbor and connect new
-            delete outputSocket.release();
-            outputSocket =
-                std::make_unique<Socket>(programArguments.getProtocol());
-            outputSocket->connect(registerSubheader.ip, registerSubheader.port);
-          } else {
-            registerRequestPackets.push(incomingPacket);
           }
         } break;
         default:
@@ -262,8 +300,8 @@ void TokenRingDispatcher::run() {
         continue;
       }
 
-    } catch (const SocketSelectTimeoutException&) {
-      std::cout << "[INFO] Select timed out." << std::endl;
+    } catch (const SocketSelectTimeoutException& ex) {
+      std::cout << "[INFO] " << ex.what() << std::endl;
     }
 
     if (!hasToken) {
@@ -293,12 +331,19 @@ void TokenRingDispatcher::run() {
       lastDataPacketSender =
           packetToSend.getHeader().originalSenderNameToString();
       outputSocket->send(packetToSend.toBinary());
+      hasToken = false;
     } else {
       std::cout << "[INFO] Sending greetings packet (2-1)" << std::endl;
       TokenRingPacket packetToSend = createAndPrepareGreetingsPacketToSend();
       lastDataPacketSender =
           packetToSend.getHeader().originalSenderNameToString();
       outputSocket->send(packetToSend.toBinary());
+      hasToken = false;
+      //      std::cout << "[INFO] Sending to: "
+      //                << outputSocket->getConnectionIp().to_string() << ':'
+      //                << outputSocket->getConnectionPort() << std::endl;
+      //      outputSocket->sendTo(packetToSend.toBinary(), neighborIp,
+      //      neighborPort);
     }
   }
 }

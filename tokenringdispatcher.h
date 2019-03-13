@@ -29,6 +29,9 @@ class TokenRingDispatcher {
 
   std::string neighborName;
 
+  Ip4 neighborIp;
+  unsigned short neighborPort = 0;
+
   ProgramArguments programArguments;
 
   bool hasToken;
@@ -53,6 +56,8 @@ class TokenRingDispatcher {
 
   void handleIncomingJoinPacket(TokenRingPacket& incomingPacket,
                                 Socket& incomingSocket);
+
+  void handleIncomingRegisterPacket(TokenRingPacket& incomingPacket);
 
   template <typename T>
   T random(T min, T max) {

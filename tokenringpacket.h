@@ -63,6 +63,10 @@ class TokenRingPacket : public Serializable {
         const Serializable::container_type& buffer);
 
     Serializable::container_type toBinary() const;
+
+    static const size_t SIZE =
+        sizeof(type) + sizeof(tokenStatus) + sizeof(originalSenderName) +
+        sizeof(packetSenderName) + sizeof(packetReceiverName) + sizeof(dataSize);
   };
 #pragma pack(pop)
 
@@ -86,6 +90,8 @@ class TokenRingPacket : public Serializable {
     Serializable::size_type fromBinary(const container_type& buffer);
 
     container_type toBinary() const;
+
+    static const size_t SIZE = Ip4::SIZE + sizeof(port);
   };
 #pragma pack(pop)
 

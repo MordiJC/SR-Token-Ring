@@ -6,10 +6,10 @@
 #include <iostream>
 
 #include "programarguments.h"
-#include "socket.h"
-#include "tokenringpacket.h"
 #include "quitstatusobserver.h"
+#include "socket.h"
 #include "tokenringdispatcher.h"
+#include "tokenringpacket.h"
 
 using namespace std;
 
@@ -24,16 +24,24 @@ int main(int argc, char *argv[]) {
     std::exit(1);
   }
 
+  std::string protocolString =
+      (args.getProtocol() == Protocol::TCP
+           ? "TCP"
+           : (args.getProtocol() == Protocol::UDP ? "UDP" : "Unknown"));
+
   std::cout << "Program arguments:" << std::endl
             << "UserId: " << args.getUserIdentifier() << std::endl
             << "Port: " << args.getPort() << std::endl
             << "NeighborIp: " << args.getNeighborIp().to_string() << std::endl
             << "NeighborPort: " << args.getNeighborPort() << std::endl
             << "HasToken: " << std::boolalpha << args.getHasToken() << std::endl
-            << std::endl;
+            << "Protocol: " << protocolString << std::endl;
 
   // Register quit handler
   std::signal(SIGINT, quitStatusObserverHandler);
+
+  // Ignore SIGPIPE
+  std::signal(SIGPIPE, SIG_IGN);
 
   TokenRingDispatcher dispatcher{args};
   dispatcher.run();
