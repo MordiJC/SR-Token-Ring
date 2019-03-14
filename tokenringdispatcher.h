@@ -1,11 +1,14 @@
 #ifndef TOKENRINGDISPATCHER_H
 #define TOKENRINGDISPATCHER_H
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <random>
 #include <set>
 #include <stdexcept>
+#include <thread>
 
 #include "programarguments.h"
 #include "socket.h"
@@ -24,10 +27,13 @@ class TokenRingDispatcher {
   std::queue<TokenRingPacket> registerRequestPackets;  // First priority
   std::queue<TokenRingPacket> dataPackets;             // Second priority
 
-  std::unique_ptr<Socket> outputSocket;
-  std::unique_ptr<Socket> neighborSocket;
+  std::recursive_mutex registerRequestPacketsMutex;
+  std::recursive_mutex dataPacketsMutex;
 
-  std::string neighborName;
+  std::unique_ptr<Socket> outputSocket;
+  std::unique_ptr<Socket> inputSocket;
+
+  std::string previousHostName;
 
   Ip4 neighborIp;
   unsigned short neighborPort = 0;
@@ -42,22 +48,28 @@ class TokenRingDispatcher {
 
   std::mt19937 gen{std::random_device{}()};
 
+  std::unique_ptr<std::thread> tokenRingInputProcessingThread{nullptr};
+
+  std::atomic_bool tokenRingInputProcessingThreadDone{false};
+
+  std::unique_ptr<Socket> tokenRingInputProcessingThreadSocketHolder{nullptr};
+
  private:
+  void initializeSockets();
+
   TokenRingPacket createJoinPacket();
 
   void sendJoinRequest();
 
-  void initializeSockets();
-
   void preparePacketRegisterSubheaderFromJoinPacket(
       Socket& incomingSocket, TokenRingPacket::Header& header);
 
-  void handleIncomingDataPacket(TokenRingPacket& incomingPacket);
+  void handleDataPacket(TokenRingPacket& incomingPacket);
 
-  void handleIncomingJoinPacket(TokenRingPacket& incomingPacket,
+  void handleJoinPacket(TokenRingPacket& incomingPacket,
                                 Socket& incomingSocket);
 
-  void handleIncomingRegisterPacket(TokenRingPacket& incomingPacket);
+  void handleRegisterPacket(TokenRingPacket& incomingPacket);
 
   template <typename T>
   T random(T min, T max) {
@@ -80,6 +92,8 @@ class TokenRingDispatcher {
   }
 
   TokenRingPacket createAndPrepareGreetingsPacketToSend();
+
+  void processNeighborSocket(Socket neighborSocket, std::atomic_bool& done);
 
  public:
   TokenRingDispatcher(ProgramArguments args);

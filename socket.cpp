@@ -178,6 +178,7 @@ void Socket::bind(const Ip4 &ip, unsigned short port) noexcept(false) {
                    sizeof(socketAddressStruct));
 
   if (ret == -1) {
+    perror("Socket binding error");
     throw SocketBindFailedException("Failed to bind to specified ip and port");
   }
 

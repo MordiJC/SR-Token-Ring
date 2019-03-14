@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <sstream>
 
 TokenRingPacket::TokenRingPacket() {}
 
@@ -48,7 +49,7 @@ const std::vector<unsigned char> TokenRingPacket::getData() const {
   return {data.begin(), data.begin() + header.dataSize};
 }
 
-const std::vector<char> TokenRingPacket::getDataAsSignedCharsVector() const {
+const std::vector<char> TokenRingPacket::getDataAsCharsVector() const {
   return {data.begin(), data.begin() + header.dataSize};
 }
 
@@ -60,6 +61,22 @@ void TokenRingPacket::setData(const std::vector<unsigned char> &value) {
   }
   std::memcpy(data.data(), value.data(), value.size());
   header.dataSize = static_cast<uint16_t>(value.size());
+}
+
+std::string TokenRingPacket::to_string() const {
+  std::stringstream out;
+  out << "TokenRingPacket::Header:" << std::endl
+      << "Type: JOIN" << std::endl
+      << "TokenStatus: Available" << std::endl
+      << "PacketSender: " << header.packetSenderName << std::endl
+      << "OriginalSender: " << header.originalSenderName << std::endl
+      << "PacketReceiver: " << header.packetReceiverName << std::endl
+      << "DataSize: " << header.dataSize << std::endl
+      << "RegisterIP: " << ::to_string(header.registerIp) << std::endl
+      << "RegisterPort: " << header.registerPort << std::endl
+      << "NeighborToDisconnect: " << header.neighborToDisconnectName;
+
+  return out.str();
 }
 
 Serializable::container_type TokenRingPacket::toBinary() const {

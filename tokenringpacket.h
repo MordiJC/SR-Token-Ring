@@ -82,9 +82,11 @@ class TokenRingPacket : public Serializable {
 
   const std::vector<unsigned char> getData() const;
 
-  const std::vector<char> getDataAsSignedCharsVector() const;
+  const std::vector<char> getDataAsCharsVector() const;
 
   void setData(const std::vector<unsigned char>& value);
+
+  std::string to_string() const;
 
   Serializable::size_type fromBinary(
       const Serializable::container_type& buffer) noexcept(false);

@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 2.8)
 
 project(SR_TokenRing)
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package (Threads)
+
 file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 file(GLOB_RECURSE ALL_SRC_HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
@@ -9,3 +15,5 @@ file(GLOB_RECURSE ALL_SRC_HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" "${CM
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${ALL_SRC_HEADER_FILES})
+
+target_link_libraries (${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
