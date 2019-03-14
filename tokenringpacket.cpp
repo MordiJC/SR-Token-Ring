@@ -66,7 +66,13 @@ void TokenRingPacket::setData(const std::vector<unsigned char> &value) {
 std::string TokenRingPacket::to_string() const {
   std::stringstream out;
   out << "TokenRingPacket::Header:" << std::endl
-      << "Type: JOIN" << std::endl
+      << "Type: "
+      << (header.type == PacketType::DATA
+              ? "DATA"
+              : (header.type == PacketType::REGISTER
+                     ? "REGISTER"
+                     : (header.type == PacketType::JOIN ? "JOIN" : "OTHER")))
+      << std::endl
       << "TokenStatus: Available" << std::endl
       << "PacketSender: " << header.packetSenderName << std::endl
       << "OriginalSender: " << header.originalSenderName << std::endl

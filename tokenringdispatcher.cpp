@@ -21,6 +21,8 @@ void TokenRingDispatcher::initializeSockets() {
   inputSocket->listen(2);
   std::cout << "[INFO] Input socket listening with backlog of 2" << std::endl;
 
+  std::lock_guard<std::recursive_mutex> guard(outputSocketMutex);
+
   outputSocket->connect(programArguments.getNeighborIp(),
                         programArguments.getNeighborPort());
 
@@ -76,6 +78,8 @@ TokenRingPacket TokenRingDispatcher::createJoinPacket() {
 
 void TokenRingDispatcher::sendJoinRequest() {
   TokenRingPacket joinPacket = createJoinPacket();
+
+  std::lock_guard<std::recursive_mutex> guard(outputSocketMutex);
 
   std::cout << "[INFO] Sending JOIN request to "
             << to_string(outputSocket->getConnectionIp()) << ':'
@@ -144,33 +148,39 @@ void TokenRingDispatcher::handleJoinPacket(TokenRingPacket& incomingPacket,
     neighborIp = packetHeaderRef.registerIp;
     neighborPort = packetHeaderRef.registerPort;
 
-  } else if (previousHostName == programArguments.getUserIdentifier()) {
+  } else {
     tokenRingHosts.insert(incomingPacket.getHeader().originalSenderName);
 
+    std::lock_guard<std::recursive_mutex> guard(outputSocketMutex);
     outputSocket->close();
     delete outputSocket.release();
     outputSocket = std::make_unique<Socket>(programArguments.getProtocol());
     outputSocket->connect(incomingPacket.getHeader().registerIp,
                           incomingPacket.getHeader().registerPort);
+
     neighborIp = incomingPacket.getHeader().registerIp;
     neighborPort = incomingPacket.getHeader().registerPort;
+
     std::cout << "[INFO][WORKER][CONNECTING] "
               << to_string(outputSocket->getIp()) << ':'
               << outputSocket->getPort() << " to "
               << to_string(outputSocket->getConnectionIp()) << ':'
               << outputSocket->getConnectionPort() << std::endl;
-  } else {
-    std::cout << "[INFO] Preparing REGISTER header" << std::endl;
-    TokenRingPacket::Header header = incomingPacket.getHeader();
-    header.type = trppt::REGISTER;
-    preparePacketRegisterSubheaderFromJoinPacket(incomingSocket, header);
 
-    incomingPacket.setHeader(header);
+    if (previousHostName != programArguments.getUserIdentifier()) {
+      std::cout << "[INFO] Preparing REGISTER header" << std::endl;
+      TokenRingPacket::Header header = incomingPacket.getHeader();
+      header.type = trppt::REGISTER;
+      preparePacketRegisterSubheaderFromJoinPacket(incomingSocket, header);
 
-    std::cout << "NEW REGISTER " << incomingPacket.to_string() << std::endl;
+      incomingPacket.setHeader(header);
 
-    std::lock_guard<std::recursive_mutex> guard(registerRequestPacketsMutex);
-    registerRequestPackets.push(incomingPacket);
+      std::cout << "NEW REGISTER " << incomingPacket.to_string() << std::endl;
+
+      std::lock_guard<std::recursive_mutex> guard(registerRequestPacketsMutex);
+      registerRequestPackets.push(incomingPacket);
+    }
+    previousHostName = incomingPacket.getHeader().originalSenderName;
   }
 
   if (tokenRingInputProcessingThread) {
@@ -200,13 +210,17 @@ void TokenRingDispatcher::handleRegisterPacket(
 
   if (incomingPacket.getHeader().neighborToDisconnectName ==
       programArguments.getUserIdentifier()) {
+    std::lock_guard<std::recursive_mutex> guard(outputSocketMutex);
+
     outputSocket->close();
     delete outputSocket.release();
     outputSocket = std::make_unique<Socket>(programArguments.getProtocol());
     outputSocket->connect(incomingPacket.getHeader().registerIp,
                           incomingPacket.getHeader().registerPort);
+
     neighborIp = incomingPacket.getHeader().registerIp;
     neighborPort = incomingPacket.getHeader().registerPort;
+
     std::cout << "[INFO][WORKER][CONNECTING] "
               << to_string(outputSocket->getIp()) << ':'
               << outputSocket->getPort() << " to "
@@ -339,6 +353,8 @@ void TokenRingDispatcher::processNeighborSocket(Socket neighborSocket,
       std::lock_guard<std::recursive_mutex> guard(registerRequestPacketsMutex);
       registerRequestPackets.pop();
 
+      std::lock_guard<std::recursive_mutex> outputGuard(outputSocketMutex);
+
       outputSocket->send(packetToSend.toBinary());
       hasToken = false;
     } else if (!dataPackets.empty()) {
@@ -350,7 +366,12 @@ void TokenRingDispatcher::processNeighborSocket(Socket neighborSocket,
         TokenRingPacket greetingsPacket =
             createAndPrepareGreetingsPacketToSend();
         lastDataPacketSender = greetingsPacket.getHeader().originalSenderName;
-        outputSocket->send(greetingsPacket.toBinary());
+
+        {
+          std::lock_guard<std::recursive_mutex> outputGuard(outputSocketMutex);
+
+          outputSocket->send(greetingsPacket.toBinary());
+        }
         std::this_thread::sleep_for(std::chrono::seconds{2});
       } else {
         std::lock_guard<std::recursive_mutex> guard(dataPacketsMutex);
@@ -358,20 +379,27 @@ void TokenRingDispatcher::processNeighborSocket(Socket neighborSocket,
                   << std::endl;
         dataPackets.pop();
         lastDataPacketSender = packetToSend.getHeader().originalSenderName;
+
+        std::lock_guard<std::recursive_mutex> outputGuard(outputSocketMutex);
+
         outputSocket->send(packetToSend.toBinary());
       }
       hasToken = false;
     } else {
-      std::cout << "[INFO][WORKER] Sending greetings packet (2-1)" << std::endl;
-      std::cout << "[INFO][WORKER] Sending from "
-                << to_string(outputSocket->getIp()) << ':'
-                << outputSocket->getPort() << " to "
-                << to_string(outputSocket->getConnectionIp()) << ':'
-                << outputSocket->getConnectionPort() << std::endl;
+      {
+        std::lock_guard<std::recursive_mutex> outputGuard(outputSocketMutex);
+        std::cout << "[INFO][WORKER] Sending greetings packet (2-1)"
+                  << std::endl;
+        std::cout << "[INFO][WORKER] Sending from "
+                  << to_string(outputSocket->getIp()) << ':'
+                  << outputSocket->getPort() << " to "
+                  << to_string(outputSocket->getConnectionIp()) << ':'
+                  << outputSocket->getConnectionPort() << std::endl;
 
-      TokenRingPacket packetToSend = createAndPrepareGreetingsPacketToSend();
-      lastDataPacketSender = packetToSend.getHeader().originalSenderName;
-      outputSocket->send(packetToSend.toBinary());
+        TokenRingPacket packetToSend = createAndPrepareGreetingsPacketToSend();
+        lastDataPacketSender = packetToSend.getHeader().originalSenderName;
+        outputSocket->send(packetToSend.toBinary());
+      }
       std::this_thread::sleep_for(std::chrono::seconds{2});
       hasToken = false;
     }
@@ -444,37 +472,34 @@ void TokenRingDispatcher::run() {
         std::cout << "[INFO] Handling incoming JOIN packet" << std::endl;
         handleJoinPacket(incomingPacket, incomingSocket);
       } else {
-        if (tokenRingInputProcessingThread) {
-          tokenRingInputProcessingThreadDone = true;
-          if (tokenRingInputProcessingThread->joinable()) {
-            tokenRingInputProcessingThread->join();
-          }
-        }
+        std::cout << "[WARNIING] Client trying to send packets other than JOIN "
+                     "before joining to ring."
+                  << std::endl;
+        std::cout << incomingPacket.to_string() << std::endl;
 
-        tokenRingInputProcessingThreadDone = false;
-        tokenRingInputProcessingThreadSocketHolder =
-            std::make_unique<Socket>(incomingSocket);
-        tokenRingInputProcessingThread.reset(new std::thread(
-            &TokenRingDispatcher::processNeighborSocket, this,
-            std::ref(*tokenRingInputProcessingThreadSocketHolder),
-            std::ref(tokenRingInputProcessingThreadDone)));
-
-        //        std::cout << "[WARNIING] Client trying to send packets other
-        //        than JOIN "
-        //                     "before joining to ring."
-        //                  << std::endl;
-        //        incomingSocket.close();
+        incomingSocket.close();
         continue;
       }
     } catch (const SocketSelectTimeoutException& ex) {
       std::cout << "[INFO] " << ex.what() << std::endl;
     }
 
-    std::cout << "[INFO][WORKER] Sending greetings packet (1-1)" << std::endl;
-    TokenRingPacket greetingsPacket = createAndPrepareGreetingsPacketToSend();
-    lastDataPacketSender = greetingsPacket.getHeader().originalSenderName;
-    outputSocket->send(greetingsPacket.toBinary());
-    std::this_thread::sleep_for(std::chrono::seconds{2});
+    if (!registerRequestPackets.empty()) {
+      TokenRingPacket& packetToSend = registerRequestPackets.front();
+      std::lock_guard<std::recursive_mutex> guard(registerRequestPacketsMutex);
+      registerRequestPackets.pop();
+
+      std::lock_guard<std::recursive_mutex> outputGuard(outputSocketMutex);
+
+      outputSocket->send(packetToSend.toBinary());
+      hasToken = false;
+    } else {
+      std::cout << "[INFO][WORKER] Sending greetings packet (1-1)" << std::endl;
+      TokenRingPacket greetingsPacket = createAndPrepareGreetingsPacketToSend();
+      lastDataPacketSender = greetingsPacket.getHeader().originalSenderName;
+      outputSocket->send(greetingsPacket.toBinary());
+      std::this_thread::sleep_for(std::chrono::seconds{2});
+    }
   }
 
   if (tokenRingInputProcessingThread &&

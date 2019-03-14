@@ -54,6 +54,8 @@ class TokenRingDispatcher {
 
   std::unique_ptr<Socket> tokenRingInputProcessingThreadSocketHolder{nullptr};
 
+  std::recursive_mutex outputSocketMutex;
+
  private:
   void initializeSockets();
 
