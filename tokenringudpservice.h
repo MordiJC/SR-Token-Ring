@@ -42,6 +42,8 @@ class TokenRingUDPService {
   std::mutex tokenStatuCVMutex;
   std::condition_variable tokenStatusCV;
 
+  std::string lastReceiverName;
+
   // Private methods
  private:
   void initializeSockets();

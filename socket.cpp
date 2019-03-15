@@ -197,9 +197,6 @@ void Socket::connect(const Ip4 &ip, unsigned short port) {
   socketAddressStruct.sin_port = htons(port);
   socketAddressStruct.sin_family = AF_INET;
 
-  std::cout << "[INFO] Connecting to " << to_string(ip) << ':' << port
-            << std::endl;
-
   int ret = ::connect(socketDescriptor,
                       reinterpret_cast<struct sockaddr *>(&socketAddressStruct),
                       sizeof(socketAddressStruct));
@@ -348,10 +345,6 @@ Socket::receiveFrom(size_t bufferSize) noexcept(false) {
   if (recvSize == -1) {
     throw SocketReceivingFailedException("Failed to receive data from socket");
   }
-
-  std::cout << "[INFO][RECVFROM] Received from "
-            << to_string(sourceAddress.sin_addr) << ':'
-            << ntohs(sourceAddress.sin_port) << std::endl;
 
   buffer.resize(static_cast<size_t>(recvSize));
 

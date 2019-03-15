@@ -41,10 +41,7 @@ int main(int argc, char *argv[]) {
   std::signal(SIGINT, quitStatusObserverHandler);
 
   // Ignore SIGPIPE
-  std::signal(SIGPIPE, SIG_IGN);
-
-  //  TokenRingDispatcher dispatcher{args};
-  //  dispatcher.run();
+  //  std::signal(SIGPIPE, SIG_IGN);
 
   if (args.getProtocol() == Protocol::UDP) {
     TokenRingUDPService dispatcher{args};

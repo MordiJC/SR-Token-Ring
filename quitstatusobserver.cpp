@@ -5,7 +5,7 @@
 QuitStatusObserver *QuitStatusObserver::instance;
 
 void quitStatusObserverHandler(int) {
-  QuitStatusObserver::getInstance().shouldQuit();
+  QuitStatusObserver::getInstance().quit();
 }
 
 QuitStatusObserver::QuitStatusObserver() {}

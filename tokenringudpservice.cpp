@@ -1,4 +1,5 @@
 #include "tokenringudpservice.h"
+#include "logger.h"
 #include "quitstatusobserver.h"
 #include "tokenringpacket.h"
 #include "utility.h"
@@ -86,7 +87,8 @@ void TokenRingUDPService::handleIncomingJoinPacket(
     previousHostName = packet.getHeader().originalSenderName;
   }
 
-  std::cout << "[INFO] Handled JOIN packet:" << std::endl << packet.to_string();
+  Logger::getInstance().log("[" + hostId + "] Host joining ring: " +
+                            packet.getHeader().originalSenderName);
 
   std::lock_guard<std::mutex> g(registerPacketsMutex);
   registerPackets.push(packet);
@@ -100,13 +102,14 @@ void TokenRingUDPService::handleIncomingRegisterPacket(
     if (packet.getHeader().neighborToDisconnectName == hostId) {
       nextHostIp = packet.getHeader().registerIp;
       nextHostPort = packet.getHeader().registerPort;
+      Logger::getInstance().log("[" + hostId + "] Received REGISTER packet.");
     } else {
       if (packet.getHeader().originalSenderName == hostId ||
           (packet.getHeader().neighborToDisconnectName != hostId &&
            packet.getHeader().originalSenderName ==
                std::string(packet.getHeader().neighborToDisconnectName))) {
-        std::cout << "[INFO] Dropping circulating REGISTER packet."
-                  << std::endl;
+        Logger::getInstance().log("[" + hostId +
+                                  "] Dropping circulating REGISTER packet.");
       } else {
         TokenRingPacket::Header header = packet.getHeader();
         insertStringToCharArrayWithLength(hostId, header.packetSenderName,
@@ -114,8 +117,8 @@ void TokenRingUDPService::handleIncomingRegisterPacket(
 
         packet.setHeader(header);
 
-        std::cout << "[INFO] Forwarding REGISTER packet" << std::endl
-                  << packet.to_string() << std::endl;
+        Logger::getInstance().log("[" + hostId +
+                                  "] Forwarding REGISTER packet.");
 
         std::lock_guard<std::mutex> g(registerPacketsMutex);
         registerPackets.push(packet);
@@ -125,11 +128,9 @@ void TokenRingUDPService::handleIncomingRegisterPacket(
     tokenStatus = true;
     tokenStatusCV.notify_all();
 
-    std::cout << "[INFO][TOKEN] Token granted" << std::endl;
-
   } else {
-    std::cout << "[ERROR] Received REGISTER packet has no token. Passing."
-              << std::endl;
+    Logger::getInstance().log(
+        "[" + hostId + "] Received REGISTER packet has no token. Passing.");
   }
 }
 
@@ -139,13 +140,13 @@ void TokenRingUDPService::handleIncomingDataPacket(TokenRingPacket& packet) {
     hosts.insert(packet.getHeader().packetSenderName);
     if (packet.getHeader().packetReceiverName == hostId) {
       auto data = packet.getDataAsCharsVector();
-      std::cout << "[INFO] DATA packet received!" << std::endl
-                << "CONTENTS: " << std::string(data.begin(), data.end())
-                << std::endl;
+      Logger::getInstance().log("[" + hostId +
+                                "] Received DATA packet. Contents: \n" +
+                                std::string(data.begin(), data.end()));
     } else {
       if (packet.getHeader().originalSenderName == hostId) {
-        std::cout << "[INFO] Dropping circulating DATA packet." << std::endl
-                  << packet.to_string() << std::endl;
+        Logger::getInstance().log("[" + hostId +
+                                  "] Dropping circulating DATA packet.");
       } else {
         TokenRingPacket::Header header = packet.getHeader();
         insertStringToCharArrayWithLength(hostId, header.packetSenderName,
@@ -153,8 +154,7 @@ void TokenRingUDPService::handleIncomingDataPacket(TokenRingPacket& packet) {
 
         packet.setHeader(header);
 
-        std::cout << "[INFO] Forwarding DATA packet:" << std::endl
-                  << packet.to_string() << std::endl;
+        Logger::getInstance().log("[" + hostId + "] Forwarding DATA packet.");
 
         std::lock_guard<std::mutex> g(dataPacketsMutex);
         dataPackets.push(packet);
@@ -164,11 +164,9 @@ void TokenRingUDPService::handleIncomingDataPacket(TokenRingPacket& packet) {
     tokenStatus = true;
     tokenStatusCV.notify_all();
 
-    std::cout << "[INFO][TOKEN] Token granted" << std::endl;
-
   } else {
-    std::cout << "[ERROR] Received DATA packet has no token. Passing."
-              << std::endl;
+    Logger::getInstance().log("[" + hostId +
+                              "] Received DATA packet has no token. Passing.");
   }
 }
 
@@ -176,33 +174,36 @@ void TokenRingUDPService::senderLoop() {
   TokenRingPacket incomingPacket;
   Serializable::container_type incomingBuffer;
 
-  std::cout << "[INFO] Sender Loop thread starting" << std::endl;
-
   while (!QuitStatusObserver::getInstance().shouldQuit()) {
-    std::cout << "[INFO][SENDER] Waiting for token" << std::endl;
     {
       std::unique_lock<std::mutex> lock(tokenStatuCVMutex);
       tokenStatusCV.wait(lock, [this] { return tokenStatus == true; });
     }
 
-    std::cout << "[INFO][SENDER] Token acquired" << std::endl;
     {
       bool done = false;
 
       std::unique_lock<std::mutex> registerGuard(registerPacketsMutex);
       if (!registerPackets.empty()) {
         TokenRingPacket& packetToSend = registerPackets.front();
-        std::cout << "[INFO][SENDER] Sending REGISTER packet" << std::endl
-                  << packetToSend.to_string() << std::endl;
 
-        outputSocket->sendTo(packetToSend.toBinary(), nextHostIp, nextHostPort);
-        registerPackets.pop();
+        if (packetToSend.getHeader().packetReceiverName != lastReceiverName ||
+            packetToSend.getHeader().packetReceiverName == hostId) {
+          Logger::getInstance().log("[" + hostId +
+                                    "] Sending REGISTER packet.");
 
-        done = true;
+          lastReceiverName = packetToSend.getHeader().packetReceiverName;
 
-        std::lock_guard<std::mutex> lock(tokenStatuCVMutex);
-        tokenStatus = false;
-        tokenStatusCV.notify_all();
+          outputSocket->sendTo(packetToSend.toBinary(), nextHostIp,
+                               nextHostPort);
+          registerPackets.pop();
+
+          done = true;
+
+          std::lock_guard<std::mutex> lock(tokenStatuCVMutex);
+          tokenStatus = false;
+          tokenStatusCV.notify_all();
+        }
       }
       registerGuard.unlock();
 
@@ -211,18 +212,22 @@ void TokenRingUDPService::senderLoop() {
         if (!dataPackets.empty()) {
           TokenRingPacket& packetToSend = dataPackets.front();
 
-          std::cout << "[INFO][SENDER] Sending DATA packet" << std::endl
-                    << packetToSend.to_string() << std::endl;
+          if (packetToSend.getHeader().packetReceiverName != lastReceiverName ||
+              packetToSend.getHeader().packetReceiverName == hostId) {
+            Logger::getInstance().log("[" + hostId + "] Sending DATA packet.");
 
-          outputSocket->sendTo(packetToSend.toBinary(), nextHostIp,
-                               nextHostPort);
-          dataPackets.pop();
+            lastReceiverName = packetToSend.getHeader().packetReceiverName;
 
-          done = true;
+            outputSocket->sendTo(packetToSend.toBinary(), nextHostIp,
+                                 nextHostPort);
+            dataPackets.pop();
 
-          std::lock_guard<std::mutex> lock(tokenStatuCVMutex);
-          tokenStatus = false;
-          tokenStatusCV.notify_all();
+            done = true;
+
+            std::lock_guard<std::mutex> lock(tokenStatuCVMutex);
+            tokenStatus = false;
+            tokenStatusCV.notify_all();
+          }
         }
         dataGuard.unlock();
       }
@@ -265,8 +270,9 @@ void TokenRingUDPService::senderLoop() {
 
         dataPacket.setData(messageBuffer);
 
-        std::cout << "[INFO][SENDER] Sending Greetings packet to "
-                  << packetReceiver << std::endl;
+        Logger::getInstance().log("[" + hostId +
+                                  "] Sending greetings packet to `" +
+                                  packetReceiver + "`");
 
         outputSocket->sendTo(dataPacket.toBinary(), nextHostIp, nextHostPort);
 
@@ -297,29 +303,23 @@ void TokenRingUDPService::run() {
       incomingPort = result.first.second;
       incomingBuffer = result.second;
 
-      std::cout << "[INFO] Received packet from " << to_string(incomingIp)
-                << ':' << incomingPort
-                << " with size of size: " << incomingBuffer.size() << std::endl;
     } catch (const SocketReceivingFailedException& ex) {
-      std::cerr << "[ERROR] Socket receiving failed: " << ex.what()
-                << std::endl;
+      Logger::getInstance().log("[" + hostId +
+                                "] Packet receiving failed: " + ex.what());
       continue;
     }
 
     try {
       size_t extractedBytes = incomingPacket.fromBinary(incomingBuffer);
-      std::cout << "[INFO] Extracted bytes: " << extractedBytes << std::endl;
+      (void)extractedBytes;
 
     } catch (const TokenRingPacketException& ex) {
-      std::cerr << "[ERROR] Token Ring Packet creation failed: " << ex.what()
-                << std::endl;
+      Logger::getInstance().log(
+          "[" + hostId + "] TokenRingPacket creation failed: " + ex.what());
       continue;
     }
 
     using trppt = TokenRingPacket::PacketType;
-
-    std::cout << "[INFO] Processing packet" << std::endl
-              << incomingPacket.to_string() << std::endl;
 
     switch (incomingPacket.getHeader().type) {
       case trppt::JOIN:
@@ -335,11 +335,9 @@ void TokenRingUDPService::run() {
         handleIncomingDataPacket(incomingPacket);
         break;
       default:
-        std::cout << "[ERROR] Unknown packet type" << std::endl
-                  << incomingPacket.to_string() << std::endl;
+        Logger::getInstance().log("[" + hostId +
+                                  "] Packet with unknown type received.");
     }
-    std::cout << "[INFO][TOKEN] Notifying about token status: "
-              << std::boolalpha << tokenStatus << std::endl;
     std::lock_guard<std::mutex> lock(tokenStatuCVMutex);
     tokenStatusCV.notify_all();
   }
