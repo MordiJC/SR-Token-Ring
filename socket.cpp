@@ -37,7 +37,7 @@ void Socket::getProtocolTypeFromSocketOpts(int descriptor) {
   }
 }
 
-void Socket::getIpAndPortPromSocket(int descriptor) {
+void Socket::getIpAndPortFromSocket(int descriptor) {
   int ret = 0;
   struct sockaddr_in socketAddressStruct;
   unsigned int socketAddressStructSize = sizeof(socketAddressStruct);
@@ -96,16 +96,18 @@ int Socket::dataToRead() const {
 }
 
 Socket::Socket(int descriptor) : socketDescriptor(descriptor) {
-  getProtocolTypeFromSocketOpts(descriptor);
+  if (protocol == Protocol::TCP) {
+    getProtocolTypeFromSocketOpts(descriptor);
 
-  getIpAndPortPromSocket(descriptor);
+    getIpAndPortFromSocket(descriptor);
+  }
 }
 
-Socket::Socket(int descriptor, in_addr address,
-               unsigned short port) noexcept(false)
+Socket::Socket(int descriptor, in_addr connectionAddress,
+               unsigned short connectionPort) noexcept(false)
     : socketDescriptor(descriptor),
-      connectionIp(Ip4(address)),
-      connectionPort(port) {
+      connectionIp(Ip4(connectionAddress)),
+      connectionPort(connectionPort) {
   getProtocolTypeFromSocketOpts(descriptor);
 }
 
@@ -313,12 +315,12 @@ void Socket::sendTo(const std::vector<unsigned char> &data,
   }
 }
 
-std::vector<unsigned char> Socket::receive() noexcept(false) {
+std::vector<unsigned char> Socket::receive(size_t bufferSize) noexcept(false) {
   std::vector<unsigned char> buffer;
-  buffer.resize(bufferSize);
+  buffer.resize(bufferSize > 0 ? bufferSize : Socket::bufferSize);
   ssize_t recvSize = 0;
 
-  recvSize = ::recv(socketDescriptor, buffer.data(), bufferSize, 0);
+  recvSize = ::recv(socketDescriptor, buffer.data(), buffer.size(), 0);
 
   if (recvSize == -1) {
     perror("Failed to receive data from socket");
@@ -331,14 +333,15 @@ std::vector<unsigned char> Socket::receive() noexcept(false) {
 }
 
 std::pair<Socket::IpAndPortPair, std::vector<unsigned char>>
-Socket::receiveFrom() noexcept(false) {
-  std::vector<unsigned char> buffer(bufferSize);
+Socket::receiveFrom(size_t bufferSize) noexcept(false) {
+  std::vector<unsigned char> buffer(bufferSize > 0 ? bufferSize
+                                                   : Socket::bufferSize);
   ssize_t recvSize = 0;
 
   struct sockaddr_in sourceAddress;
   socklen_t sourceAddressSize = sizeof(struct sockaddr_in);
 
-  recvSize = ::recvfrom(socketDescriptor, buffer.data(), bufferSize, 0,
+  recvSize = ::recvfrom(socketDescriptor, buffer.data(), buffer.size(), 0,
                         reinterpret_cast<struct sockaddr *>(&sourceAddress),
                         &sourceAddressSize);
 

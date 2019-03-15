@@ -8,8 +8,8 @@
 #include "programarguments.h"
 #include "quitstatusobserver.h"
 #include "socket.h"
-#include "tokenringdispatcher.h"
 #include "tokenringpacket.h"
+#include "tokenringudpservice.h"
 
 using namespace std;
 
@@ -43,8 +43,15 @@ int main(int argc, char *argv[]) {
   // Ignore SIGPIPE
   std::signal(SIGPIPE, SIG_IGN);
 
-  TokenRingDispatcher dispatcher{args};
-  dispatcher.run();
+  //  TokenRingDispatcher dispatcher{args};
+  //  dispatcher.run();
+
+  if (args.getProtocol() == Protocol::UDP) {
+    TokenRingUDPService dispatcher{args};
+    dispatcher.run();
+  } else {
+    std::cout << "UNSUPPORTED PROTOCOL" << std::endl;
+  }
 
   return 0;
 }

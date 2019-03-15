@@ -87,9 +87,9 @@ class Socket {
   void sendTo(const std::vector<unsigned char>& data, const Ip4& destination,
               unsigned short port) noexcept(false);
 
-  std::vector<unsigned char> receive() noexcept(false);
+  std::vector<unsigned char> receive(size_t bufferSize = 0) noexcept(false);
 
-  std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom() noexcept(
+  std::pair<IpAndPortPair, std::vector<unsigned char>> receiveFrom(size_t bufferSize = 0) noexcept(
       false);
 
   void disconnect() noexcept;
@@ -113,7 +113,7 @@ class Socket {
 
   void getProtocolTypeFromSocketOpts(int descriptor);
 
-  void getIpAndPortPromSocket(int descriptor);
+  void getIpAndPortFromSocket(int descriptor);
 };
 
 #endif  // SOCKET_H

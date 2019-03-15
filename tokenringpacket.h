@@ -31,7 +31,7 @@ class TokenRingPacket : public Serializable {
 
   using TokenStatus_t = uint8_t;
 
-  static const size_t UserIdentifierNameSize = 16;
+  static const size_t NameMaxSize = 16;
 
   static const size_t DataMaxSize = 512;
 
@@ -40,15 +40,15 @@ class TokenRingPacket : public Serializable {
     PacketType type;
     TokenStatus_t tokenStatus;
 
-    char originalSenderName[UserIdentifierNameSize];  // padded with zeros,
+    char originalSenderName[NameMaxSize];  // padded with zeros,
                                                       // maximum chars = 15
-    char packetSenderName[UserIdentifierNameSize];    // padded with zeros,
+    char packetSenderName[NameMaxSize];    // padded with zeros,
                                                       // maximum chars = 15
-    char packetReceiverName[UserIdentifierNameSize];
+    char packetReceiverName[NameMaxSize];
 
     // used in REGISTER packet
 
-    char neighborToDisconnectName[UserIdentifierNameSize];
+    char neighborToDisconnectName[NameMaxSize];
 
     Ip4 registerIp;
 

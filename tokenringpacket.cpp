@@ -41,8 +41,9 @@ const TokenRingPacket::Header &TokenRingPacket::getHeader() const {
 }
 
 void TokenRingPacket::setHeader(const Header &value) {
+  uint16_t dataSize = header.dataSize;
   header = value;
-  header.dataSize = static_cast<uint16_t>(data.size());
+  header.dataSize = dataSize;
 }
 
 const std::vector<unsigned char> TokenRingPacket::getData() const {
