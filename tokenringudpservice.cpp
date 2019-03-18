@@ -187,12 +187,14 @@ void TokenRingUDPService::senderLoop() {
       if (!registerPackets.empty()) {
         TokenRingPacket& packetToSend = registerPackets.front();
 
-        if (packetToSend.getHeader().packetReceiverName != lastReceiverName ||
+        if ((packetToSend.getHeader().packetReceiverName != lastReceiverName &&
+             packetToSend.getHeader().packetSenderName != lastSenderName) ||
             packetToSend.getHeader().packetReceiverName == hostId) {
           Logger::getInstance().log("[" + hostId +
                                     "] Sending REGISTER packet.");
 
           lastReceiverName = packetToSend.getHeader().packetReceiverName;
+          lastSenderName = packetToSend.getHeader().packetSenderName;
 
           outputSocket->sendTo(packetToSend.toBinary(), nextHostIp,
                                nextHostPort);
@@ -212,11 +214,14 @@ void TokenRingUDPService::senderLoop() {
         if (!dataPackets.empty()) {
           TokenRingPacket& packetToSend = dataPackets.front();
 
-          if (packetToSend.getHeader().packetReceiverName != lastReceiverName ||
+          if ((packetToSend.getHeader().packetReceiverName !=
+                   lastReceiverName &&
+               packetToSend.getHeader().packetSenderName != lastSenderName) ||
               packetToSend.getHeader().packetReceiverName == hostId) {
             Logger::getInstance().log("[" + hostId + "] Sending DATA packet.");
 
             lastReceiverName = packetToSend.getHeader().packetReceiverName;
+            lastSenderName = packetToSend.getHeader().packetSenderName;
 
             outputSocket->sendTo(packetToSend.toBinary(), nextHostIp,
                                  nextHostPort);

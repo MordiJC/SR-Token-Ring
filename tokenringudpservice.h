@@ -43,6 +43,7 @@ class TokenRingUDPService {
   std::condition_variable tokenStatusCV;
 
   std::string lastReceiverName;
+  std::string lastSenderName;
 
   // Private methods
  private:
